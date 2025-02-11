@@ -8,3 +8,5 @@ pysocks
 openai
 pdfminer.six
 flask_cors
+langchain_google_genai
+fake-useragent

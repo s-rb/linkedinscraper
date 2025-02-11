@@ -2,9 +2,10 @@ from flask import Flask, render_template, jsonify
 import pandas as pd
 import sqlite3
 import json
-import openai
 from pdfminer.high_level import extract_text
 from flask_cors import CORS
+import os  # Add this import for environment variable access
+from langchain_google_genai import ChatGoogleGenerativeAI  # New import
 
 def load_config(file_name):
     # Load the config file
@@ -148,12 +149,12 @@ def get_resume(job_id):
         job = dict(zip(column_names, job_tuple))
     resume = read_pdf(config["resume_path"])
 
-    # Check if OpenAI API key is empty
-    if not config["OpenAI_API_KEY"]:
-        print("Error: OpenAI API key is empty.")
-        return jsonify({"error": "OpenAI API key is empty."}), 400
+    # Check if GEMINI_API_KEY is empty
+    if not os.getenv('GEMINI_API_KEY'):
+        print("Error: GEMINI_API_KEY is empty.")
+        return jsonify({"error": "GEMINI_API_KEY is empty."}), 400
 
-    openai.api_key = config["OpenAI_API_KEY"]
+    api_key = os.getenv('GEMINI_API_KEY')  # Get API key from environment
     consideration = ""
     user_prompt = ("You are a career coach with a client that is applying for a job as a " 
                    + job['title'] + " at " + job['company'] 
@@ -166,16 +167,12 @@ def get_resume(job_id):
         user_prompt += "\nConsider incorporating that " + consideration
 
     try:
-        completion = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "user", "content": user_prompt},
-            ],
-        )
+        chat = ChatGoogleGenerativeAI(api_key=api_key, model='gemini-2.0-flash-exp')  # Initialize with the new API key
+        completion = chat.generate(user_prompt)  # Use the new method to generate responses
         response = completion.choices[0].message.content
     except Exception as e:
-        print(f"Error connecting to OpenAI: {e}")
-        return jsonify({"error": f"Error connecting to OpenAI: {e}"}), 500
+        print(f"Error connecting to Gemini: {e}")
+        return jsonify({"error": f"Error connecting to Gemini: {e}"}), 500
 
     query = "UPDATE jobs SET resume = ? WHERE id = ?"
     print(f'Executing query: {query} with job_id: {job_id} and resume: {response}')
@@ -192,15 +189,11 @@ def get_CoverLetter(job_id):
 
     def get_chat_gpt(prompt):
         try:
-            completion = openai.ChatCompletion.create(
-                model=config["OpenAI_Model"],
-                messages=[
-                    {"role": "user", "content": prompt},
-                ],
-            )
+            chat = ChatGoogleGenerativeAI(api_key=os.getenv('GEMINI_API_KEY'), model='gemini-2.0-flash-exp')  # Initialize with the new API key
+            completion = chat.generate(prompt)  # Use the new method to generate responses
             return completion.choices[0].message.content
         except Exception as e:
-            print(f"Error connecting to OpenAI: {e}")
+            print(f"Error connecting to Gemini: {e}")
             return None
 
     cursor.execute("SELECT job_description, title, company FROM jobs WHERE id = ?", (job_id,))
@@ -217,11 +210,11 @@ def get_CoverLetter(job_id):
         return jsonify({"error": "Resume not found or couldn't be read."}), 400
 
     # Check if OpenAI API key is empty
-    if not config["OpenAI_API_KEY"]:
-        print("Error: OpenAI API key is empty.")
-        return jsonify({"error": "OpenAI API key is empty."}), 400
+    if not os.getenv('GEMINI_API_KEY'):
+        print("Error: GEMINI_API_KEY key is empty.")
+        return jsonify({"error": "GEMINI_API_KEY is empty."}), 400
 
-    openai.api_key = config["OpenAI_API_KEY"]
+    api_key = os.getenv('GEMINI_API_KEY')  # Get API key from environment
     consideration = ""
     user_prompt = ("You are a career coach with over 15 years of experience helping job seekers land their dream jobs in tech. You are helping a candidate to write a cover letter for the below role. Approach this task in three steps. Step 1. Identify main challenges someone in this position would face day to day. Step 2. Write an attention grabbing hook for your cover letter that highlights your experience and qualifications in a way that shows you empathize and can successfully take on challenges of the role. Consider incorporating specific examples of how you tackled these challenges in your past work, and explore creative ways to express your enthusiasm for the opportunity. Put emphasis on how the candidate can contribute to company as opposed to just listing accomplishments. Keep your hook within 100 words or less. Step 3. Finish writing the cover letter based on the resume and keep it within 250 words. Respond with final cover letter only. \n job description: " + job['job_description'] + "\n company: " + job['company'] + "\n title: " + job['title'] + "\n resume: " + resume)
     if consideration:
@@ -229,13 +222,13 @@ def get_CoverLetter(job_id):
 
     response = get_chat_gpt(user_prompt)
     if response is None:
-        return jsonify({"error": "Failed to get a response from OpenAI."}), 500
+        return jsonify({"error": "Failed to get a response from Gemini."}), 500
 
     user_prompt2 = ("You are young but experienced career coach helping job seekers land their dream jobs in tech. I need your help crafting a cover letter. Here is a job description: " + job['job_description'] + "\nhere is my resume: " + resume + "\nHere's the cover letter I got so far: " + response + "\nI need you to help me improve it. Let's approach this in following steps. \nStep 1. Please set the formality scale as follows: 1 is conversational English, my initial Cover letter draft is 10. Step 2. Identify three to five ways this cover letter can be improved, and elaborate on each way with at least one thoughtful sentence. Step 4. Suggest an improved cover letter based on these suggestions with the Formality Score set to 7. Avoid subjective qualifiers such as drastic, transformational, etc. Keep the final cover letter within 250 words. Please respond with the final cover letter only.")
     if user_prompt2:
         response = get_chat_gpt(user_prompt2)
         if response is None:
-            return jsonify({"error": "Failed to get a response from OpenAI."}), 500
+            return jsonify({"error": "Failed to get a response from Gemini."}), 500
 
     query = "UPDATE jobs SET cover_letter = ? WHERE id = ?"
     print(f'Executing query: {query} with job_id: {job_id} and cover letter: {response}')

@@ -11,6 +11,9 @@ import pandas as pd
 from urllib.parse import quote
 from langdetect import detect
 from langdetect.lang_detect_exception import LangDetectException
+from fake_useragent import UserAgent
+
+ua = UserAgent(browsers=['Safari', 'Chrome', 'Firefox'], os=["Windows", "Ubuntu", "Mac OS X", "Android", "iOS"])
 
 
 def load_config(file_name):
@@ -18,14 +21,66 @@ def load_config(file_name):
     with open(file_name) as f:
         return json.load(f)
 
-def get_with_retry(url, config, retries=3, delay=1):
+
+def get_with_proxy(url, config):
+    # Load proxies from the JSON file
+    with open('proxies.json') as f:
+        proxies = json.load(f)
+
+    for proxy in proxies:
+        http_proxy = {"http": f"http://{proxy['ip_address']}:{proxy['port']}"}
+        https_proxy = {"https": f"https://{proxy['ip_address']}:{proxy['port']}"}
+        headers_ua = {**config['headers'], "User-Agent": ua.random}
+
+
+        # Try HTTP request
+        try:
+            r = requests.get(url, headers=headers_ua, proxies=http_proxy, timeout=10)
+            r.raise_for_status()  # Raise an error for bad responses
+            return r  # Return the response if successful
+        except requests.exceptions.RequestException as e:
+            try:
+                r = requests.get(url, headers=headers_ua, proxies=http_proxy, timeout=10)
+                r.raise_for_status()  # Raise an error for bad responses
+                return r  # Return the response if successful
+            except requests.exceptions.RequestException as ex:
+                print(f"HTTP request failed with proxy {http_proxy}: {ex}")
+
+
+        # Try HTTPS request
+        try:
+            r = requests.get(url, headers=headers_ua,proxies=https_proxy,timeout=10)
+            r.raise_for_status()  # Raise an error for bad responses
+            return r  # Return the response if successful
+        except requests.exceptions.RequestException as e:
+            try:
+                r = requests.get(url, headers=headers_ua,proxies=https_proxy,timeout=10)
+                r.raise_for_status()  # Raise an error for bad responses
+                return r  # Return the response if successful
+            except requests.exceptions.RequestException as ex:
+                print(f"HTTPS request failed with proxy {myproxy['https']}: {ex}")
+
+        # If both requests failed, remove the proxy from the list and update the file
+        print(f"Removing proxy {proxy} from the list.")
+        proxies.remove(proxy)
+
+        # Write the updated proxies back to the file
+        with open('proxies.json', 'w') as f:
+            json.dump(proxies, f, indent=4)
+
+    # If all proxies are exhausted, raise an error
+    raise Exception("All proxies failed. Exiting program.")
+
+
+
+def get_with_retry(url, config, retries=3, delay=2):
     # Get the URL with retries and delay
     for i in range(retries):
         try:
-            if len(config['proxies']) > 0:
-                r = requests.get(url, headers=config['headers'], proxies=config['proxies'], timeout=5)
+            if len(proxy_list) > 0:
+                r = get_with_proxy(url, config)
             else:
-                r = requests.get(url, headers=config['headers'], timeout=5)
+                r = requests.get(url, headers={**config['headers'], "User-Agent": ua.random}, timeout=5)
             return BeautifulSoup(r.content, 'html.parser')
         except requests.exceptions.Timeout:
             print(f"Timeout occurred for URL: {url}, retrying in {delay}s...")
@@ -267,7 +322,7 @@ def main(config_file):
     start_time = tm.perf_counter()
     job_list = []
 
-    config = load_config(config_file)
+    config = load_config(`config_file`)
     jobs_tablename = config['jobs_tablename'] # name of the table to store the "approved" jobs
     filtered_jobs_tablename = config['filtered_jobs_tablename'] # name of the table to store the jobs that have been filtered out based on description keywords (so that in future they are not scraped again)
     #Scrape search results page and get job cards. This step might take a while based on the number of pages and search queries.

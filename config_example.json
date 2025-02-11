@@ -31,6 +31,7 @@
   "pages_to_scrape": 10,
   "rounds": 1,
   "days_to_scrape": 10,
-  "app_table": "jobs"
+  "app_table": "jobs",
+  "request_pause": 1000
   }
   

@@ -22,10 +22,11 @@ def load_config(file_name):
         return json.load(f)
 
 
+proxy_list = load_config('proxies.json')
+
+
 def get_with_proxy(url, config):
-    # Load proxies from the JSON file
-    with open('proxies.json') as f:
-        proxies = json.load(f)
+    proxies = proxy_list
 
     for proxy in proxies:
         http_proxy = {"http": f"http://{proxy['ip_address']}:{proxy['port']}"}
@@ -39,12 +40,7 @@ def get_with_proxy(url, config):
             r.raise_for_status()  # Raise an error for bad responses
             return r  # Return the response if successful
         except requests.exceptions.RequestException as e:
-            try:
-                r = requests.get(url, headers=headers_ua, proxies=http_proxy, timeout=10)
-                r.raise_for_status()  # Raise an error for bad responses
-                return r  # Return the response if successful
-            except requests.exceptions.RequestException as ex:
-                print(f"HTTP request failed with proxy {http_proxy}: {ex}")
+            print(f"HTTP request failed with proxy {http_proxy}: {e}")
 
 
         # Try HTTPS request
@@ -53,23 +49,10 @@ def get_with_proxy(url, config):
             r.raise_for_status()  # Raise an error for bad responses
             return r  # Return the response if successful
         except requests.exceptions.RequestException as e:
-            try:
-                r = requests.get(url, headers=headers_ua,proxies=https_proxy,timeout=10)
-                r.raise_for_status()  # Raise an error for bad responses
-                return r  # Return the response if successful
-            except requests.exceptions.RequestException as ex:
-                print(f"HTTPS request failed with proxy {myproxy['https']}: {ex}")
-
-        # If both requests failed, remove the proxy from the list and update the file
-        print(f"Removing proxy {proxy} from the list.")
-        proxies.remove(proxy)
-
-        # Write the updated proxies back to the file
-        with open('proxies.json', 'w') as f:
-            json.dump(proxies, f, indent=4)
+            print(f"HTTPS request failed with proxy {https_proxy}: {e}")
 
     # If all proxies are exhausted, raise an error
-    raise Exception("All proxies failed. Exiting program.")
+    raise Exception("All proxies failed")
 
 
 
@@ -104,7 +87,7 @@ def transform(soup):
         parent_div = item.parent
         entity_urn = parent_div['data-entity-urn']
         job_posting_id = entity_urn.split(':')[-1]
-        job_url = 'https://www.linkedin.com/jobs/view/'+job_posting_id+'/'
+        job_url = 'http://www.linkedin.com/jobs/view/'+job_posting_id+'/'
 
         date_tag_new = item.find('time', class_ = 'job-search-card__listdate--new')
         date_tag = item.find('time', class_='job-search-card__listdate')
@@ -286,7 +269,7 @@ def get_jobcards(config):
             keywords = quote(query['keywords'])  # URL encode the keywords
             location = quote(query['location'])  # URL encode the location
             for i in range(0, config['pages_to_scrape']):
-                url = f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={keywords}&location={location}&f_TPR=&f_WT={query['f_WT']}&geoId=&f_TPR={config['timespan']}&start={25*i}"
+                url = f"http://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={keywords}&location={location}&f_TPR=&f_WT={query['f_WT']}&geoId=&f_TPR={config['timespan']}&start={25*i}"
                 soup = get_with_retry(url, config)
                 jobs = transform(soup)
                 all_jobs = all_jobs + jobs
@@ -322,7 +305,7 @@ def main(config_file):
     start_time = tm.perf_counter()
     job_list = []
 
-    config = load_config(`config_file`)
+    config = load_config(config_file)
     jobs_tablename = config['jobs_tablename'] # name of the table to store the "approved" jobs
     filtered_jobs_tablename = config['filtered_jobs_tablename'] # name of the table to store the jobs that have been filtered out based on description keywords (so that in future they are not scraped again)
     #Scrape search results page and get job cards. This step might take a while based on the number of pages and search queries.

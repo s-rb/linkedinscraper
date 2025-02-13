@@ -24,7 +24,7 @@ def save_proxies(file_path, proxies):
         json.dump(proxies, file, indent=4)
 
 
-def checkProxyEquals(ip1, headers_ua, http_proxy):
+def check_proxy_equals(ip1, headers_ua, http_proxy):
     try:
         r = requests.get(urlIp, headers=headers_ua, proxies=http_proxy, timeout=10)
         r.raise_for_status()
@@ -50,7 +50,7 @@ def check_proxy(proxy, ip1):
     try:
         r = requests.get(url, headers=headers_ua, proxies=http_proxy, timeout=10)
         r.raise_for_status()  # Raise an error for bad responses
-        if (r.status_code == 200): return checkProxyEquals(ip1, headers_ua, http_proxy)
+        if r.status_code == 200: return check_proxy_equals(ip1, headers_ua, http_proxy)
         else: raise requests.RequestException
     except Exception as ex:
         print(f"HTTP request failed with proxy {http_proxy}: {ex}")
@@ -72,6 +72,10 @@ def test_and_remove_proxies(file_path):
 
 
     proxies = load_proxies(file_path)
+    if len(proxies) == 0:
+        print("There are no proxies in config. Continue without them!")
+        return
+
     valid_proxies = []
 
     counter = 1

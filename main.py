@@ -9,9 +9,24 @@ from itertools import groupby
 from datetime import datetime, timedelta, time
 import pandas as pd
 from urllib.parse import quote
+
+from google.api_core.exceptions import ResourceExhausted
 from langdetect import detect
 from langdetect.lang_detect_exception import LangDetectException
 from fake_useragent import UserAgent
+from langchain_google_genai import ChatGoogleGenerativeAI
+import os
+from pdfminer.high_level import extract_text
+
+api_key = os.getenv('GEMINI_API_KEY')  # Get API key from environment
+chat = ChatGoogleGenerativeAI(
+    api_key=api_key,
+    model='gemini-2.0-flash-exp',
+    temperature=0,
+    max_tokens=None,
+    timeout=None,
+    max_retries=2,
+)  # Initialize with the new API key
 
 ua = UserAgent(browsers=['Safari', 'Chrome', 'Firefox'], os=["Windows", "Ubuntu", "Mac OS X", "Android", "iOS"])
 
@@ -23,9 +38,25 @@ def load_config(file_name):
 
 
 proxy_list = load_config('proxies.json')
+config = load_config('config.json')
 
 
-def get_with_proxy(url, config):
+def read_pdf(file_path):
+    try:
+        text = extract_text(file_path)
+        return text
+    except FileNotFoundError:
+        print(f"Error: The file '{file_path}' was not found.")
+        return None
+    except Exception as e:
+        print(f"An error occurred while reading the PDF: {e}")
+        return None
+
+
+resume = read_pdf(config["resume_path"])
+
+
+def get_with_proxy(url):
     proxies = proxy_list
 
     for proxy in proxies:
@@ -56,12 +87,12 @@ def get_with_proxy(url, config):
 
 
 
-def get_with_retry(url, config, retries=3, delay=2):
+def get_with_retry(url, retries=3, delay=2):
     # Get the URL with retries and delay
     for i in range(retries):
         try:
             if len(proxy_list) > 0:
-                r = get_with_proxy(url, config)
+                r = get_with_proxy(url)
             else:
                 r = requests.get(url, headers={**config['headers'], "User-Agent": ua.random}, timeout=5)
             return BeautifulSoup(r.content, 'html.parser')
@@ -135,17 +166,29 @@ def safe_detect(text):
     except LangDetectException:
         return 'en'
 
-def remove_irrelevant_jobs(joblist, config):
-    #Filter out jobs based on description, title, and language. Set up in config.json.
-    new_joblist = [job for job in joblist if not any(word.lower() in job['job_description'].lower() for word in config['desc_words'])]   
-    new_joblist = [job for job in new_joblist if not any(word.lower() in job['title'].lower() for word in config['title_exclude'])] if len(config['title_exclude']) > 0 else new_joblist
-    new_joblist = [job for job in new_joblist if any(word.lower() in job['title'].lower() for word in config['title_include'])] if len(config['title_include']) > 0 else new_joblist
-    new_joblist = [job for job in new_joblist if safe_detect(job['job_description']) in config['languages']] if len(config['languages']) > 0 else new_joblist
-    new_joblist = [job for job in new_joblist if not any(word.lower() in job['company'].lower() for word in config['company_exclude'])] if len(config['company_exclude']) > 0 else new_joblist
+def remove_irrelevant_jobs(joblist):
+    new_joblist = []
+    counter = 1
+    for job in joblist:
+        print(f"- {counter} of {len(joblist)}: checking is job fits conditions")
+        counter += 1
+        if is_job_fits_conditions(f"{job['job_description']}\n{job['job_description']}"):
+            new_joblist.append(job)
+        tm.sleep(5000 / 1000) # 15 requests per minute max
 
     return new_joblist
+#
+# def remove_irrelevant_jobs(joblist):
+#     #Filter out jobs based on description, title, and language. Set up in config.json.
+#     new_joblist = [job for job in joblist if not any(word.lower() in job['job_description'].lower() for word in config['desc_words'])]
+#     new_joblist = [job for job in new_joblist if not any(word.lower() in job['title'].lower() for word in config['title_exclude'])] if len(config['title_exclude']) > 0 else new_joblist
+#     new_joblist = [job for job in new_joblist if any(word.lower() in job['title'].lower() for word in config['title_include'])] if len(config['title_include']) > 0 else new_joblist
+#     new_joblist = [job for job in new_joblist if safe_detect(job['job_description']) in config['languages']] if len(config['languages']) > 0 else new_joblist
+#     new_joblist = [job for job in new_joblist if not any(word.lower() in job['company'].lower() for word in config['company_exclude'])] if len(config['company_exclude']) > 0 else new_joblist
+#
+#     return new_joblist
 
-def remove_duplicates(joblist, config):
+def remove_duplicates(joblist):
     # Remove duplicate jobs in the joblist. Duplicate is defined as having the same title and company.
     joblist.sort(key=lambda x: (x['title'], x['company']))
     joblist = [next(g) for k, g in groupby(joblist, key=lambda x: (x['title'], x['company']))]
@@ -169,7 +212,7 @@ def convert_date_format(date_string):
         print(f"Error: The date for job {date_string} - is not in the correct format.")
         return None
 
-def create_connection(config):
+def create_connection():
     # Create a database connection to a SQLite database
     conn = None
     path = config['db_path']
@@ -261,7 +304,7 @@ def job_exists(df, job):
     #The job exists if there's already a job in the database that has the same URL
     return ((df['job_url'] == job['job_url']).any() | (((df['title'] == job['title']) & (df['company'] == job['company']) & (df['date'] == job['date'])).any()))
 
-def get_jobcards(config):
+def get_jobcards():
     # Function to get the job cards from the search results page
     all_jobs = []
     for k in range(0, config['rounds']):
@@ -270,21 +313,21 @@ def get_jobcards(config):
             location = quote(query['location'])  # URL encode the location
             for i in range(0, config['pages_to_scrape']):
                 url = f"http://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={keywords}&location={location}&f_TPR=&f_WT={query['f_WT']}&geoId=&f_TPR={config['timespan']}&start={25*i}"
-                soup = get_with_retry(url, config)
+                soup = get_with_retry(url)
                 jobs = transform(soup)
                 all_jobs = all_jobs + jobs
                 print("Finished scraping page: ", url)
                 
                 # Pause between requests
                 tm.sleep(config['request_pause'] / 1000)  # Convert milliseconds to seconds
-    print("Total job cards scraped: ", len(all_jobs))
-    all_jobs = remove_duplicates(all_jobs, config)
-    print("Total job cards after removing duplicates: ", len(all_jobs))
-    all_jobs = remove_irrelevant_jobs(all_jobs, config)
-    print("Total job cards after removing irrelevant jobs: ", len(all_jobs))
+    print("=> Total job cards scraped: ", len(all_jobs))
+    all_jobs = remove_duplicates(all_jobs)
+    print("=> Total job cards after removing duplicates: ", len(all_jobs))
+    all_jobs = remove_irrelevant_jobs(all_jobs)
+    print("=> Total job cards after removing irrelevant jobs: ", len(all_jobs))
     return all_jobs
 
-def find_new_jobs(all_jobs, conn, config):
+def find_new_jobs(all_jobs, conn):
     # From all_jobs, find the jobs that are not already in the database. Function checks both the jobs and filtered_jobs tables.
     jobs_tablename = config['jobs_tablename']
     filtered_jobs_tablename = config['filtered_jobs_tablename']
@@ -301,18 +344,101 @@ def find_new_jobs(all_jobs, conn, config):
     new_joblist = [job for job in all_jobs if not job_exists(jobs_db, job) and not job_exists(filtered_jobs_db, job)]
     return new_joblist
 
-def main(config_file):
+
+def is_job_fits_resume(job_description):
+    """
+    Check if the job description is suitable for the given resume using the chat bot.
+
+    Args:
+        job_description (str): The job description text.
+        resume (str): The resume text.
+
+    Returns:
+        bool: True if the job is suitable, False otherwise.
+    """
+    # Check if GEMINI_API_KEY is empty
+    if not api_key:
+        print("Error: GEMINI_API_KEY is empty.")
+        return False
+
+    user_prompt = (f"Job Description: {job_description}\n\n"
+                   f"Resume: {resume}")
+    messages = [
+        ("system", f"You are a career coach with over 15 years of experience helping job seekers land their dream jobs in tech. "
+                   f"Based on the following job description and resume, "
+                   f"please respond with only 'true' if the resume is suitable for the job, or 'false' otherwise."
+                   f"Keep in mind, that main programming language is critical, but other technologies are secondary and "
+                   f"I might don't have them in my resume, but I could know them anyway"),
+        ("human", user_prompt)
+    ]
+
+    try:
+        completion = call_chat(messages)
+        response = completion.content.strip().lower()
+        return response == 'true'
+    except ResourceExhausted as ex:
+        print(f"Retryable error when calling Gemini: {ex}")
+        tm.sleep(5)
+        completion = call_chat(messages)
+        response = completion.content.strip().lower()
+        return response == 'true'
+    except Exception as e:
+        print(f"Error connecting to Gemini: {e}")
+        return False
+
+
+def is_job_fits_conditions(job_description):
+    if not api_key:
+        print("Error: GEMINI_API_KEY is empty.")
+        return False
+
+    user_prompt = (f"Job Description: {job_description}\n\n"
+                   f"Conditions:"
+                   f"- job description language: {config['languages']},"
+                   f"- job keywords expected (not all are mandatory, but it's nice to have): {config['title_include']}")
+    messages = [
+        ("system", f"You are a career coach with over 15 years of experience helping job seekers land their dream jobs in tech. "
+                   f"Based on the following job description and conditions, "
+                   f"please respond with only 'true' if the resume is suitable for the job, or 'false' otherwise."
+                   f"Keep in mind that programming language and job description language are critical conditions"),
+        ("human", user_prompt)
+    ]
+
+    try:
+        completion = call_chat(messages)
+        response = completion.content.strip().lower()
+        return response == 'true'
+    except ResourceExhausted as ex:
+        print(f"Retryable error when calling Gemini: {ex}")
+        tm.sleep(30)
+        # TODO обернуть а также разделить сохранение и фильтрацию данных, возможно удаление из БД тоже
+        try:
+            completion = call_chat(messages)
+            response = completion.content.strip().lower()
+            return response == 'true'
+        except ResourceExhausted:
+            print("ResourceExhausted when calling Gemini")
+    except Exception as e:
+        print(f"Error connecting to Gemini: {e}")
+        return False
+
+
+def call_chat(messages):
+    completion = chat.invoke(messages)
+    return completion
+
+
+def main():
     start_time = tm.perf_counter()
     job_list = []
 
-    config = load_config(config_file)
     jobs_tablename = config['jobs_tablename'] # name of the table to store the "approved" jobs
     filtered_jobs_tablename = config['filtered_jobs_tablename'] # name of the table to store the jobs that have been filtered out based on description keywords (so that in future they are not scraped again)
     #Scrape search results page and get job cards. This step might take a while based on the number of pages and search queries.
-    all_jobs = get_jobcards(config)
-    conn = create_connection(config)
+    all_jobs = get_jobcards()
+    conn = create_connection()
     #filtering out jobs that are already in the database
-    all_jobs = find_new_jobs(all_jobs, conn, config)
+    all_jobs = find_new_jobs(all_jobs, conn)
     print ("Total new jobs found after comparing to the database: ", len(all_jobs))
 
     if len(all_jobs) > 0:
@@ -324,7 +450,7 @@ def main(config_file):
             if job_date < datetime.now() - timedelta(days=config['days_to_scrape']):
                 continue
             print('Found new job: ', job['title'], 'at ', job['company'], job['job_url'])
-            desc_soup = get_with_retry(job['job_url'], config)
+            desc_soup = get_with_retry(job['job_url'])
             job['job_description'] = transform_job(desc_soup)
             language = safe_detect(job['job_description'])
             if language not in config['languages']:
@@ -332,7 +458,7 @@ def main(config_file):
                 #continue
             job_list.append(job)
         #Final check - removing jobs based on job description keywords words from the config file
-        jobs_to_add = remove_irrelevant_jobs(job_list, config)
+        jobs_to_add = remove_irrelevant_jobs(job_list)
         print ("Total jobs to add: ", len(jobs_to_add))
         #Create a list for jobs removed based on job description keywords - they will be added to the filtered_jobs table
         filtered_list = [job for job in job_list if job not in jobs_to_add]
@@ -368,8 +494,5 @@ def main(config_file):
 
 
 if __name__ == "__main__":
-    config_file = 'config.json'  # default config file
-    if len(sys.argv) == 2:
-        config_file = sys.argv[1]
-        
-    main(config_file)
+
+    main()

@@ -7,8 +7,8 @@ if [ $? -ne 0 ]; then
     echo "Ошибка при выполнении скрипта"
     exit 1
 fi
-if [ ! -f proxies.json ] || [ ! -s proxies.json ] || [ "$(jq '. | length' proxies.json)" -eq 0 ]; then
-    echo "Отсутствуют прокси!"
-    exit 1
-fi
+#if [ ! -f proxies.json ] || [ ! -s proxies.json ] || [ "$(jq '. | length' proxies.json)" -eq 0 ]; then
+#    echo "Отсутствуют прокси!"
+#    exit 1
+#fi
 python3 main.py

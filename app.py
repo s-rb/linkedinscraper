@@ -5,7 +5,7 @@ import json
 from pdfminer.high_level import extract_text
 from flask_cors import CORS
 import os  # Add this import for environment variable access
-from langchain_google_genai import ChatGoogleGenerativeAI  # New import
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 def load_config(file_name):
     # Load the config file
@@ -214,7 +214,6 @@ def get_CoverLetter(job_id):
         print("Error: GEMINI_API_KEY key is empty.")
         return jsonify({"error": "GEMINI_API_KEY is empty."}), 400
 
-    api_key = os.getenv('GEMINI_API_KEY')  # Get API key from environment
     consideration = ""
     user_prompt = ("You are a career coach with over 15 years of experience helping job seekers land their dream jobs in tech. You are helping a candidate to write a cover letter for the below role. Approach this task in three steps. Step 1. Identify main challenges someone in this position would face day to day. Step 2. Write an attention grabbing hook for your cover letter that highlights your experience and qualifications in a way that shows you empathize and can successfully take on challenges of the role. Consider incorporating specific examples of how you tackled these challenges in your past work, and explore creative ways to express your enthusiasm for the opportunity. Put emphasis on how the candidate can contribute to company as opposed to just listing accomplishments. Keep your hook within 100 words or less. Step 3. Finish writing the cover letter based on the resume and keep it within 250 words. Respond with final cover letter only. \n job description: " + job['job_description'] + "\n company: " + job['company'] + "\n title: " + job['title'] + "\n resume: " + resume)
     if consideration:

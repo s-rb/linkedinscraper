@@ -130,6 +130,15 @@
                 <!-- Display the list of jobs -->
                 <h2>Jobs List</h2>
                 
+                <div>
+                    <label for="remote-filter">Filter by Remote:</label>
+                    <select id="remote-filter" onchange="filterJobs()">
+                        <option value="all" {% if remote_filter_value == 'all' %}selected{% endif %}>All</option>
+                        <option value="true" {% if remote_filter_value == 'true' %}selected{% endif %}>Remote</option>
+                        <option value="false" {% if remote_filter_value == 'false' %}selected{% endif %}>On-site</option>
+                    </select>
+                </div>
+                
                 {% for job in jobs %}
                 <a class="{% if job.rejected == 1 %}job-item job-item-rejected{% elif job.interview == 1 %}job-item job-item-interview{% elif job.applied == 1 %}job-item job-item-applied{% else %}job-item{% endif %}"  href="#" onclick="event.preventDefault(); showJobDetails('{{ job.id }}')" data-job-id="{{ job.id }}">
                     <div class="job-content">
@@ -157,6 +166,12 @@
             </div>
         </div>
         <script src="/static/job_actions.js"></script>
+        <script>
+        function filterJobs() {
+            const filterValue = document.getElementById('remote-filter').value;
+            window.location.href = '/filter_jobs?remote=' + filterValue;
+        }
+        </script>
     </body>
     
 </html>

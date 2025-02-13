@@ -18,7 +18,12 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 import os
 from pdfminer.high_level import extract_text
 
-api_key = os.getenv('GEMINI_API_KEY')  # Get API key from environment
+GEMINI_API_KEY = 'GEMINI_API_KEY'
+JOBS_FILTERED_CSV = 'linkedin_jobs_filtered.csv'
+LINKEDIN_JOBS_CSV = 'linkedin_jobs.csv'
+TEMP_LINKEDIN_JOBS_CSV = 'temp_linkedin_jobs.csv'
+
+api_key = os.getenv(GEMINI_API_KEY)  # Get API key from environment
 chat = ChatGoogleGenerativeAI(
     api_key=api_key,
     model='gemini-2.0-flash-exp',
@@ -323,8 +328,8 @@ def get_jobcards():
     print("=> Total job cards scraped: ", len(all_jobs))
     all_jobs = remove_duplicates(all_jobs)
     print("=> Total job cards after removing duplicates: ", len(all_jobs))
-    all_jobs = remove_irrelevant_jobs(all_jobs)
-    print("=> Total job cards after removing irrelevant jobs: ", len(all_jobs))
+    # all_jobs = remove_irrelevant_jobs(all_jobs)
+    # print("=> Total job cards after removing irrelevant jobs: ", len(all_jobs))
     return all_jobs
 
 def find_new_jobs(all_jobs, conn):
@@ -395,12 +400,13 @@ def is_job_fits_conditions(job_description):
     user_prompt = (f"Job Description: {job_description}\n\n"
                    f"Conditions:"
                    f"- job description language: {config['languages']},"
-                   f"- job keywords expected (not all are mandatory, but it's nice to have): {config['title_include']}")
+                   f"- job keywords expected (not all of them are mandatory, but it would be nice to have): {config['title_include']}")
     messages = [
         ("system", f"You are a career coach with over 15 years of experience helping job seekers land their dream jobs in tech. "
                    f"Based on the following job description and conditions, "
-                   f"please respond with only 'true' if the resume is suitable for the job, or 'false' otherwise."
-                   f"Keep in mind that programming language and job description language are critical conditions"),
+                   f"please respond with only 'true' if the the job meets the conditions, or 'false' otherwise."
+                   f"Keep in mind that the programming language and the language of the job description are critical conditions."
+                   f"Other technologies are not critical"),
         ("human", user_prompt)
     ]
 
@@ -411,13 +417,13 @@ def is_job_fits_conditions(job_description):
     except ResourceExhausted as ex:
         print(f"Retryable error when calling Gemini: {ex}")
         tm.sleep(30)
-        # TODO обернуть а также разделить сохранение и фильтрацию данных, возможно удаление из БД тоже
         try:
             completion = call_chat(messages)
             response = completion.content.strip().lower()
             return response == 'true'
-        except ResourceExhausted:
-            print("ResourceExhausted when calling Gemini")
+        except Exception as ex:
+            print(f"Exception when calling Gemini: {ex}")
+            return False
     except Exception as e:
         print(f"Error connecting to Gemini: {e}")
         return False
@@ -435,62 +441,93 @@ def main():
     jobs_tablename = config['jobs_tablename'] # name of the table to store the "approved" jobs
     filtered_jobs_tablename = config['filtered_jobs_tablename'] # name of the table to store the jobs that have been filtered out based on description keywords (so that in future they are not scraped again)
     #Scrape search results page and get job cards. This step might take a while based on the number of pages and search queries.
-    all_jobs = get_jobcards()
     conn = create_connection()
+
+    process_temp_csv_jobs(conn, filtered_jobs_tablename, jobs_tablename)
+
+    all_jobs = get_jobcards()
     #filtering out jobs that are already in the database
     all_jobs = find_new_jobs(all_jobs, conn)
     print ("Total new jobs found after comparing to the database: ", len(all_jobs))
 
     if len(all_jobs) > 0:
-
-        for job in all_jobs:
-            job_date = convert_date_format(job['date'])
-            job_date = datetime.combine(job_date, time())
-            #if job is older than a week, skip it
-            if job_date < datetime.now() - timedelta(days=config['days_to_scrape']):
-                continue
-            print('Found new job: ', job['title'], 'at ', job['company'], job['job_url'])
-            desc_soup = get_with_retry(job['job_url'])
-            job['job_description'] = transform_job(desc_soup)
-            language = safe_detect(job['job_description'])
-            if language not in config['languages']:
-                print('Job description language not supported: ', language)
-                #continue
-            job_list.append(job)
-        #Final check - removing jobs based on job description keywords words from the config file
-        jobs_to_add = remove_irrelevant_jobs(job_list)
-        print ("Total jobs to add: ", len(jobs_to_add))
-        #Create a list for jobs removed based on job description keywords - they will be added to the filtered_jobs table
-        filtered_list = [job for job in job_list if job not in jobs_to_add]
-        df = pd.DataFrame(jobs_to_add)
-        df_filtered = pd.DataFrame(filtered_list)
-        df['date_loaded'] = datetime.now()
-        df_filtered['date_loaded'] = datetime.now()
-        df['date_loaded'] = df['date_loaded'].astype(str)
-        df_filtered['date_loaded'] = df_filtered['date_loaded'].astype(str)        
-        
-        if conn is not None:
-            #Update or Create the database table for the job list
-            if table_exists(conn, jobs_tablename):
-                update_table(conn, df, jobs_tablename)
-            else:
-                create_table(conn, df, jobs_tablename)
-                
-            #Update or Create the database table for the filtered out jobs
-            if table_exists(conn, filtered_jobs_tablename):
-                update_table(conn, df_filtered, filtered_jobs_tablename)
-            else:
-                create_table(conn, df_filtered, filtered_jobs_tablename)
-        else:
-            print("Error! cannot create the database connection.")
-        
-        df.to_csv('linkedin_jobs.csv', index=False, encoding='utf-8')
-        df_filtered.to_csv('linkedin_jobs_filtered.csv', index=False, encoding='utf-8')
+        save_jobs(all_jobs, conn, filtered_jobs_tablename, job_list, jobs_tablename)
     else:
         print("No jobs found")
     
     end_time = tm.perf_counter()
     print(f"Scraping finished in {end_time - start_time:.2f} seconds")
+
+
+def save_jobs(all_jobs, conn, filtered_jobs_tablename, job_list, jobs_tablename):
+    jobs_to_add = get_jobs_to_add(all_jobs, job_list)
+    df = pd.DataFrame(jobs_to_add)
+    df['date_loaded'] = datetime.now()
+    df['date_loaded'] = df['date_loaded'].astype(str)
+    # todo сохранять в промежуточный csv файл все, а потом извлекать оттуда все, фильтровать и сохранять окончательно
+    # сохранять в БД все, запоминать кол-во сохраненный, а потом извлекать последних кол-во и обрабатывать и далее уже сохранять окончательно
+
+    #####
+    df.to_csv(TEMP_LINKEDIN_JOBS_CSV, index=False, encoding='utf-8')
+
+    process_temp_csv_jobs(conn, filtered_jobs_tablename, jobs_tablename)
+
+
+def process_temp_csv_jobs(conn, filtered_jobs_tablename, jobs_tablename):
+    if not os.path.exists(TEMP_LINKEDIN_JOBS_CSV): return
+    ######
+    # Данные сохранены, теперь надо обработать нерелевантные и сохранить окончательно только подходящие
+    # Загрузка данных из CSV файла
+    job_list = pd.read_csv(TEMP_LINKEDIN_JOBS_CSV, encoding='utf-8').to_dict('records')
+    jobs_to_add = remove_irrelevant_jobs(job_list)
+    # Create a list for jobs removed based on job description keywords - they will be added to the filtered_jobs table
+    filtered_list = [job for job in job_list if job not in jobs_to_add]
+    df = pd.DataFrame(jobs_to_add)
+    df_filtered = pd.DataFrame(filtered_list)
+    # df['date_loaded'] = datetime.now() #todo ????
+    df_filtered['date_loaded'] = datetime.now()
+    # df['date_loaded'] = df['date_loaded'].astype(str)
+    df_filtered['date_loaded'] = df_filtered['date_loaded'].astype(str)
+    if conn is not None:
+        # Update or Create the database table for the job list
+        if table_exists(conn, jobs_tablename):
+            update_table(conn, df, jobs_tablename)
+        else:
+            create_table(conn, df, jobs_tablename)
+
+        # Update or Create the database table for the filtered out jobs
+        if table_exists(conn, filtered_jobs_tablename):
+            update_table(conn, df_filtered, filtered_jobs_tablename)
+        else:
+            create_table(conn, df_filtered, filtered_jobs_tablename)
+    else:
+        print("Error! cannot create the database connection.")
+    df.to_csv(LINKEDIN_JOBS_CSV, index=False, encoding='utf-8')
+    df_filtered.to_csv(JOBS_FILTERED_CSV, index=False, encoding='utf-8')
+    # Удаление временного файла, если он существует
+    if os.path.exists(TEMP_LINKEDIN_JOBS_CSV): os.remove(TEMP_LINKEDIN_JOBS_CSV)
+
+
+def get_jobs_to_add(all_jobs, job_list):
+    for job in all_jobs:
+        job_date = convert_date_format(job['date'])
+        job_date = datetime.combine(job_date, time())
+        # if job is older than a week, skip it
+        if job_date < datetime.now() - timedelta(days=config['days_to_scrape']):
+            continue
+        print('Found new job: ', job['title'], 'at ', job['company'], job['job_url'])
+        desc_soup = get_with_retry(job['job_url'])
+        job['job_description'] = transform_job(desc_soup)
+        language = safe_detect(job['job_description'])
+        if language not in config['languages']:
+            print('Job description language not supported: ', language)
+            # continue
+        job_list.append(job)
+    # Final check - removing jobs based on job description keywords words from the config file
+    # jobs_to_add = remove_irrelevant_jobs(job_list)
+    jobs_to_add = job_list
+    print("Total jobs to add: ", len(jobs_to_add))
+    return jobs_to_add
 
 
 if __name__ == "__main__":

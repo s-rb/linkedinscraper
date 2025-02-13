@@ -16,3 +16,4 @@ SupabaseUpload/
 .idea/
 .env
 !run.sh
+proxies.json.**

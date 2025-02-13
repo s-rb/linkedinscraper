@@ -1,3 +1,6 @@
+from os import system
+from pyexpat.errors import messages
+
 from flask import Flask, render_template, jsonify
 import pandas as pd
 import sqlite3
@@ -16,6 +19,8 @@ config = load_config('config.json')
 app = Flask(__name__)
 CORS(app)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
+
+chat = ChatGoogleGenerativeAI(api_key=os.getenv('GEMINI_API_KEY'), model='gemini-2.0-flash-exp')  # Initialize with the new API key
 
 def read_pdf(file_path):
     try:
@@ -154,22 +159,22 @@ def get_resume(job_id):
         print("Error: GEMINI_API_KEY is empty.")
         return jsonify({"error": "GEMINI_API_KEY is empty."}), 400
 
-    api_key = os.getenv('GEMINI_API_KEY')  # Get API key from environment
     consideration = ""
-    user_prompt = ("You are a career coach with a client that is applying for a job as a " 
+    system = ("system", f"You are a career coach with over 15 years of experience helping job seekers land their dream jobs in tech.")
+    user_prompt = ("human", "You are a career coach with a client that is applying for a job as a "
                    + job['title'] + " at " + job['company'] 
                    + ". They have a resume that you need to review and suggest how to tailor it for the job. "
                    "Approach this task in the following steps: \n 1. Highlight three to five most important responsibilities for this role based on the job description. "
                    "\n2. Based on these most important responsibilities from the job description, please tailor the resume for this role. Do not make information up. "
                    "Respond with the final resume only. \n\n Here is the job description: " 
                    + job['job_description'] + "\n\n Here is the resume: " + resume)
+    messages = [system, user_prompt]
     if consideration:
-        user_prompt += "\nConsider incorporating that " + consideration
+        user_prompt[1] += "\nConsider incorporating that " + consideration
 
     try:
-        chat = ChatGoogleGenerativeAI(api_key=api_key, model='gemini-2.0-flash-exp')  # Initialize with the new API key
-        completion = chat.generate(user_prompt)  # Use the new method to generate responses
-        response = completion.choices[0].message.content
+        completion = chat.invoke(messages)  # Use the new method to generate responses
+        response = completion.content
     except Exception as e:
         print(f"Error connecting to Gemini: {e}")
         return jsonify({"error": f"Error connecting to Gemini: {e}"}), 500
@@ -187,11 +192,10 @@ def get_CoverLetter(job_id):
     conn = sqlite3.connect(config["db_path"])
     cursor = conn.cursor()
 
-    def get_chat_gpt(prompt):
+    def get_chat_gpt(messages):
         try:
-            chat = ChatGoogleGenerativeAI(api_key=os.getenv('GEMINI_API_KEY'), model='gemini-2.0-flash-exp')  # Initialize with the new API key
-            completion = chat.generate(prompt)  # Use the new method to generate responses
-            return completion.choices[0].message.content
+            completion = chat.invoke(messages)  # Use the new method to generate responses
+            return completion.content
         except Exception as e:
             print(f"Error connecting to Gemini: {e}")
             return None
@@ -215,17 +219,17 @@ def get_CoverLetter(job_id):
         return jsonify({"error": "GEMINI_API_KEY is empty."}), 400
 
     consideration = ""
-    user_prompt = ("You are a career coach with over 15 years of experience helping job seekers land their dream jobs in tech. You are helping a candidate to write a cover letter for the below role. Approach this task in three steps. Step 1. Identify main challenges someone in this position would face day to day. Step 2. Write an attention grabbing hook for your cover letter that highlights your experience and qualifications in a way that shows you empathize and can successfully take on challenges of the role. Consider incorporating specific examples of how you tackled these challenges in your past work, and explore creative ways to express your enthusiasm for the opportunity. Put emphasis on how the candidate can contribute to company as opposed to just listing accomplishments. Keep your hook within 100 words or less. Step 3. Finish writing the cover letter based on the resume and keep it within 250 words. Respond with final cover letter only. \n job description: " + job['job_description'] + "\n company: " + job['company'] + "\n title: " + job['title'] + "\n resume: " + resume)
+    user_prompt = ("human", "You are a career coach with over 15 years of experience helping job seekers land their dream jobs in tech. You are helping a candidate to write a cover letter for the below role. Approach this task in three steps. Step 1. Identify main challenges someone in this position would face day to day. Step 2. Write an attention grabbing hook for your cover letter that highlights your experience and qualifications in a way that shows you empathize and can successfully take on challenges of the role. Consider incorporating specific examples of how you tackled these challenges in your past work, and explore creative ways to express your enthusiasm for the opportunity. Put emphasis on how the candidate can contribute to company as opposed to just listing accomplishments. Keep your hook within 100 words or less. Step 3. Finish writing the cover letter based on the resume and keep it within 250 words. Respond with final cover letter only. \n job description: " + job['job_description'] + "\n company: " + job['company'] + "\n title: " + job['title'] + "\n resume: " + resume)
     if consideration:
-        user_prompt += "\nConsider incorporating that " + consideration
+        user_prompt[1] += "\nConsider incorporating that " + consideration
 
-    response = get_chat_gpt(user_prompt)
+    response = get_chat_gpt([user_prompt])
     if response is None:
         return jsonify({"error": "Failed to get a response from Gemini."}), 500
 
-    user_prompt2 = ("You are young but experienced career coach helping job seekers land their dream jobs in tech. I need your help crafting a cover letter. Here is a job description: " + job['job_description'] + "\nhere is my resume: " + resume + "\nHere's the cover letter I got so far: " + response + "\nI need you to help me improve it. Let's approach this in following steps. \nStep 1. Please set the formality scale as follows: 1 is conversational English, my initial Cover letter draft is 10. Step 2. Identify three to five ways this cover letter can be improved, and elaborate on each way with at least one thoughtful sentence. Step 4. Suggest an improved cover letter based on these suggestions with the Formality Score set to 7. Avoid subjective qualifiers such as drastic, transformational, etc. Keep the final cover letter within 250 words. Please respond with the final cover letter only.")
+    user_prompt2 = ("human", "You are young but experienced career coach helping job seekers land their dream jobs in tech. I need your help crafting a cover letter. Here is a job description: " + job['job_description'] + "\nhere is my resume: " + resume + "\nHere's the cover letter I got so far: " + response + "\nI need you to help me improve it. Let's approach this in following steps. \nStep 1. Please set the formality scale as follows: 1 is conversational English, my initial Cover letter draft is 10. Step 2. Identify three to five ways this cover letter can be improved, and elaborate on each way with at least one thoughtful sentence. Step 4. Suggest an improved cover letter based on these suggestions with the Formality Score set to 7. Avoid subjective qualifiers such as drastic, transformational, etc. Keep the final cover letter within 250 words. Please respond with the final cover letter only.")
     if user_prompt2:
-        response = get_chat_gpt(user_prompt2)
+        response = get_chat_gpt([user_prompt2])
         if response is None:
             return jsonify({"error": "Failed to get a response from Gemini."}), 500
 

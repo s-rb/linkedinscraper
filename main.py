@@ -35,7 +35,6 @@ chat = ChatGoogleGenerativeAI(
 
 ua = UserAgent(browsers=['Safari', 'Chrome', 'Firefox'], os=["Windows", "Ubuntu", "Mac OS X", "Android", "iOS"])
 
-
 def load_config(file_name):
     # Load the config file
     with open(file_name) as f:
@@ -316,10 +315,15 @@ def get_jobcards():
         for query in config['search_queries']:
             keywords = quote(query['keywords'])  # URL encode the keywords
             location = quote(query['location'])  # URL encode the location
+            is_remote = query['f_WT'] == "2"
             for i in range(0, config['pages_to_scrape']):
                 url = f"http://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={keywords}&location={location}&f_TPR=&f_WT={query['f_WT']}&geoId=&f_TPR={config['timespan']}&start={25*i}"
                 soup = get_with_retry(url)
-                jobs = transform(soup)
+                jobs = []
+                transformed = transform(soup)
+                for job in transformed:
+                    job = {**job, "is_remote": is_remote}
+                    jobs.append(job)
                 all_jobs = all_jobs + jobs
                 print("Finished scraping page: ", url)
                 
@@ -328,8 +332,6 @@ def get_jobcards():
     print("=> Total job cards scraped: ", len(all_jobs))
     all_jobs = remove_duplicates(all_jobs)
     print("=> Total job cards after removing duplicates: ", len(all_jobs))
-    # all_jobs = remove_irrelevant_jobs(all_jobs)
-    # print("=> Total job cards after removing irrelevant jobs: ", len(all_jobs))
     return all_jobs
 
 def find_new_jobs(all_jobs, conn):
@@ -464,10 +466,7 @@ def save_jobs(all_jobs, conn, filtered_jobs_tablename, job_list, jobs_tablename)
     df = pd.DataFrame(jobs_to_add)
     df['date_loaded'] = datetime.now()
     df['date_loaded'] = df['date_loaded'].astype(str)
-    # todo сохранять в промежуточный csv файл все, а потом извлекать оттуда все, фильтровать и сохранять окончательно
-    # сохранять в БД все, запоминать кол-во сохраненный, а потом извлекать последних кол-во и обрабатывать и далее уже сохранять окончательно
 
-    #####
     df.to_csv(TEMP_LINKEDIN_JOBS_CSV, index=False, encoding='utf-8')
 
     process_temp_csv_jobs(conn, filtered_jobs_tablename, jobs_tablename)
@@ -475,7 +474,6 @@ def save_jobs(all_jobs, conn, filtered_jobs_tablename, job_list, jobs_tablename)
 
 def process_temp_csv_jobs(conn, filtered_jobs_tablename, jobs_tablename):
     if not os.path.exists(TEMP_LINKEDIN_JOBS_CSV): return
-    ######
     # Данные сохранены, теперь надо обработать нерелевантные и сохранить окончательно только подходящие
     # Загрузка данных из CSV файла
     job_list = pd.read_csv(TEMP_LINKEDIN_JOBS_CSV, encoding='utf-8').to_dict('records')
@@ -484,9 +482,7 @@ def process_temp_csv_jobs(conn, filtered_jobs_tablename, jobs_tablename):
     filtered_list = [job for job in job_list if job not in jobs_to_add]
     df = pd.DataFrame(jobs_to_add)
     df_filtered = pd.DataFrame(filtered_list)
-    # df['date_loaded'] = datetime.now() #todo ????
     df_filtered['date_loaded'] = datetime.now()
-    # df['date_loaded'] = df['date_loaded'].astype(str)
     df_filtered['date_loaded'] = df_filtered['date_loaded'].astype(str)
     if conn is not None:
         # Update or Create the database table for the job list

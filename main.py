@@ -20,8 +20,8 @@ from pdfminer.high_level import extract_text
 
 GEMINI_MODEL = 'gemini-2.0-flash-exp'
 GEMINI_API_KEY = 'GEMINI_API_KEY'
-JOBS_FILTERED_CSV = '../../linkedin_jobs_filtered.csv'
-LINKEDIN_JOBS_CSV = '../../linkedin_jobs.csv'
+JOBS_FILTERED_CSV = 'linkedin_jobs_filtered.csv'
+LINKEDIN_JOBS_CSV = 'linkedin_jobs.csv'
 TEMP_LINKEDIN_JOBS_CSV = 'temp_linkedin_jobs.csv'
 
 api_key = os.getenv(GEMINI_API_KEY)  # Get API key from environment
@@ -43,7 +43,7 @@ def load_config(file_name):
 
 
 proxy_list = load_config('proxies.json')
-config = load_config('../../config.json')
+config = load_config('config.json')
 
 
 def read_pdf(file_path):
@@ -215,7 +215,7 @@ def convert_date_format(date_string):
 def create_connection():
     # Create a database connection to a SQLite database
     conn = None
-    path = config['db_path']
+    path = f"../../{config['db_path']}"
     try:
         conn = sqlite3.connect(path) # creates a SQL database in the 'data' directory
     except Error as e:

@@ -15,7 +15,9 @@ def load_config(file_name):
     with open(file_name) as f:
         return json.load(f)
 
-config = load_config('../../config.json')
+config = load_config('config.json')
+CONFIG_DB_PATH = config["db_path"]
+DB_PATH = f"{CONFIG_DB_PATH}"
 app = Flask(__name__)
 CORS(app)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
@@ -77,7 +79,7 @@ def filter_jobs():
 
 @app.route('/get_all_jobs')
 def get_all_jobs():
-    conn = sqlite3.connect(config["db_path"])
+    conn = sqlite3.connect(DB_PATH)
     query = "SELECT * FROM jobs"
     df = pd.read_sql_query(query, conn)
     df = df.sort_values(by='id', ascending=False)
@@ -87,7 +89,7 @@ def get_all_jobs():
 
 @app.route('/job_details/<int:job_id>')
 def job_details(job_id):
-    conn = sqlite3.connect(config["db_path"])
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
     job_tuple = cursor.fetchone()
@@ -103,7 +105,7 @@ def job_details(job_id):
 
 @app.route('/hide_job/<int:job_id>', methods=['POST'])
 def hide_job(job_id):
-    conn = sqlite3.connect(config["db_path"])
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("UPDATE jobs SET hidden = 1 WHERE id = ?", (job_id,))
     conn.commit()
@@ -114,7 +116,7 @@ def hide_job(job_id):
 @app.route('/mark_applied/<int:job_id>', methods=['POST'])
 def mark_applied(job_id):
     print("Applied clicked!")
-    conn = sqlite3.connect(config["db_path"])
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     query = "UPDATE jobs SET applied = 1 WHERE id = ?"
     print(f'Executing query: {query} with job_id: {job_id}')  # Log the query
@@ -126,7 +128,7 @@ def mark_applied(job_id):
 @app.route('/mark_interview/<int:job_id>', methods=['POST'])
 def mark_interview(job_id):
     print("Interview clicked!")
-    conn = sqlite3.connect(config["db_path"])
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     query = "UPDATE jobs SET interview = 1 WHERE id = ?"
     print(f'Executing query: {query} with job_id: {job_id}')
@@ -138,7 +140,7 @@ def mark_interview(job_id):
 @app.route('/mark_rejected/<int:job_id>', methods=['POST'])
 def mark_rejected(job_id):
     print("Rejected clicked!")
-    conn = sqlite3.connect(config["db_path"])
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     query = "UPDATE jobs SET rejected = 1 WHERE id = ?"
     print(f'Executing query: {query} with job_id: {job_id}')
@@ -149,7 +151,7 @@ def mark_rejected(job_id):
 
 @app.route('/get_cover_letter/<int:job_id>')
 def get_cover_letter(job_id):
-    conn = sqlite3.connect(config["db_path"])
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT cover_letter FROM jobs WHERE id = ?", (job_id,))
     cover_letter = cursor.fetchone()
@@ -162,7 +164,7 @@ def get_cover_letter(job_id):
 @app.route('/get_resume/<int:job_id>', methods=['POST'])
 def get_resume(job_id):
     print("Resume clicked!")
-    conn = sqlite3.connect(config["db_path"])
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT job_description, title, company FROM jobs WHERE id = ?", (job_id,))
     job_tuple = cursor.fetchone()
@@ -181,11 +183,11 @@ def get_resume(job_id):
     consideration = ""
     system = ("system", f"You are a career coach with over 15 years of experience helping job seekers land their dream jobs in tech.")
     user_prompt = ("human", "You are a career coach with a client that is applying for a job as a "
-                   + job['title'] + " at " + job['company'] 
+                   + job['title'] + " at " + job['company']
                    + ". They have a resume that you need to review and suggest how to tailor it for the job. "
                    "Approach this task in the following steps: \n 1. Highlight three to five most important responsibilities for this role based on the job description. "
                    "\n2. Based on these most important responsibilities from the job description, please tailor the resume for this role. Do not make information up. "
-                   "Respond with the final resume only. \n\n Here is the job description: " 
+                   "Respond with the final resume only. \n\n Here is the job description: "
                    + job['job_description'] + "\n\n Here is the resume: " + resume)
     messages = [system, user_prompt]
     if consideration:
@@ -208,7 +210,7 @@ def get_resume(job_id):
 @app.route('/get_CoverLetter/<int:job_id>', methods=['POST'])
 def get_CoverLetter(job_id):
     print("CoverLetter clicked!")
-    conn = sqlite3.connect(config["db_path"])
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     def get_chat_gpt(messages):
@@ -224,7 +226,7 @@ def get_CoverLetter(job_id):
     if job_tuple is not None:
         column_names = [column[0] for column in cursor.description]
         job = dict(zip(column_names, job_tuple))
-    
+
     resume = read_pdf(config["resume_path"])
 
     # Check if resume is None
@@ -260,7 +262,7 @@ def get_CoverLetter(job_id):
     return jsonify({"cover_letter": response}), 200
 
 def read_jobs_from_db():
-    conn = sqlite3.connect(config["db_path"])
+    conn = sqlite3.connect(DB_PATH)
     query = "SELECT * FROM jobs WHERE hidden = 0"
     df = pd.read_sql_query(query, conn)
     df = df.sort_values(by='id', ascending=False)
@@ -268,7 +270,7 @@ def read_jobs_from_db():
     return df.to_dict('records')
 
 def verify_db_schema():
-    conn = sqlite3.connect(config["db_path"])
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     # Get the table information

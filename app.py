@@ -1,3 +1,4 @@
+from inspect import Traceback
 from os import system
 from pyexpat.errors import messages
 
@@ -5,6 +6,8 @@ from flask import Flask, render_template, jsonify, request
 import pandas as pd
 import sqlite3
 import json
+
+from google.api_core.operations_v1.operations_client_config import config
 from pdfminer.high_level import extract_text
 from flask_cors import CORS
 import os  # Add this import for environment variable access
@@ -22,7 +25,10 @@ app = Flask(__name__)
 CORS(app)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 
-chat = ChatGoogleGenerativeAI(api_key=os.getenv('GEMINI_API_KEY'), model='gemini-2.0-flash-exp')  # Initialize with the new API key
+llm_api_key = config['LLM_API_KEY']
+llm_model = config['LLM_MODEL']
+
+chat = ChatGoogleGenerativeAI(api_key=llm_api_key, model=llm_model)
 
 def read_pdf(file_path):
     try:
@@ -176,12 +182,12 @@ def get_resume(job_id):
     resume = read_pdf(config["resume_path"])
 
     # Check if GEMINI_API_KEY is empty
-    if not os.getenv('GEMINI_API_KEY'):
-        print("Error: GEMINI_API_KEY is empty.")
-        return jsonify({"error": "GEMINI_API_KEY is empty."}), 400
+    if not llm_api_key:
+        print("Error: LLM API KEY is empty.")
+        return jsonify({"error": "LLM API KEY is empty."}), 400
 
     consideration = ""
-    system = ("system", f"You are a career coach with over 15 years of experience helping job seekers land their dream jobs in tech.")
+    system_msg = ("system", f"You are a career coach with over 15 years of experience helping job seekers land their dream jobs in tech.")
     user_prompt = ("human", "You are a career coach with a client that is applying for a job as a "
                    + job['title'] + " at " + job['company']
                    + ". They have a resume that you need to review and suggest how to tailor it for the job. "
@@ -189,12 +195,12 @@ def get_resume(job_id):
                    "\n2. Based on these most important responsibilities from the job description, please tailor the resume for this role. Do not make information up. "
                    "Respond with the final resume only. \n\n Here is the job description: "
                    + job['job_description'] + "\n\n Here is the resume: " + resume)
-    messages = [system, user_prompt]
+    msgs = [system_msg, user_prompt]
     if consideration:
         user_prompt[1] += "\nConsider incorporating that " + consideration
 
     try:
-        completion = chat.invoke(messages)  # Use the new method to generate responses
+        completion = chat.invoke(msgs)  # Use the new method to generate responses
         response = completion.content
     except Exception as e:
         print(f"Error connecting to Gemini: {e}")
@@ -235,7 +241,7 @@ def get_CoverLetter(job_id):
         return jsonify({"error": "Resume not found or couldn't be read."}), 400
 
     # Check if OpenAI API key is empty
-    if not os.getenv('GEMINI_API_KEY'):
+    if not llm_api_key:
         print("Error: GEMINI_API_KEY key is empty.")
         return jsonify({"error": "GEMINI_API_KEY is empty."}), 400
 
@@ -291,5 +297,8 @@ def verify_db_schema():
     conn.close()
 
 if __name__ == "__main__":
-    verify_db_schema()  # Verify the DB schema before running the app
-    app.run(debug=True, port=5001)
+    try:
+        verify_db_schema()  # Verify the DB schema before running the app
+        app.run(debug=True, host='0.0.0.0', port=5001)
+    except Exception as ex:
+        print(f"Во время работы приложения с UI произошла ошибка: {ex}")

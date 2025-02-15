@@ -18,21 +18,9 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 import os
 from pdfminer.high_level import extract_text
 
-GEMINI_MODEL = 'gemini-2.0-flash-exp'
-GEMINI_API_KEY = 'GEMINI_API_KEY'
 JOBS_FILTERED_CSV = 'linkedin_jobs_filtered.csv'
 LINKEDIN_JOBS_CSV = 'linkedin_jobs.csv'
 TEMP_LINKEDIN_JOBS_CSV = 'temp_linkedin_jobs.csv'
-
-api_key = os.getenv(GEMINI_API_KEY)  # Get API key from environment
-chat = ChatGoogleGenerativeAI(
-    api_key=api_key,
-    model=GEMINI_MODEL,
-    temperature=0,
-    max_tokens=None,
-    timeout=10.0,
-    max_retries=2,
-)  # Initialize with the new API key
 
 ua = UserAgent(browsers=['Safari', 'Chrome', 'Firefox'], os=["Windows", "Ubuntu", "Mac OS X", "Android", "iOS"])
 
@@ -44,6 +32,17 @@ def load_config(file_name):
 
 proxy_list = load_config('proxies.json')
 config = load_config('config.json')
+
+llm_model = config["LLM_MODEL"]
+llm_api_key = config["LLM_API_KEY"]  # Get API key from environment
+
+chat = ChatGoogleGenerativeAI(
+    api_key=llm_api_key,
+    model=llm_model,
+    temperature=0,
+    max_tokens=None,
+    timeout=10.0,
+    max_retries=2)  # Initialize with the new API key
 
 
 def read_pdf(file_path):
@@ -69,7 +68,6 @@ def get_with_proxy(url):
         https_proxy = {"https": f"https://{proxy['ip_address']}:{proxy['port']}"}
         headers_ua = {**config['headers'], "User-Agent": ua.random}
 
-
         # Try HTTP request
         try:
             r = requests.get(url, headers=headers_ua, proxies=http_proxy, timeout=10)
@@ -77,7 +75,6 @@ def get_with_proxy(url):
             return r  # Return the response if successful
         except requests.exceptions.RequestException as e:
             print(f"HTTP request failed with proxy {http_proxy}: {e}")
-
 
         # Try HTTPS request
         try:
@@ -358,9 +355,9 @@ def is_job_fits_resume(job_description):
     Returns:
         bool: True if the job is suitable, False otherwise.
     """
-    # Check if GEMINI_API_KEY is empty
-    if not api_key:
-        print("Error: GEMINI_API_KEY is empty.")
+    # Check if LLM_API_KEY is empty
+    if not llm_api_key:
+        print("Error: LLM_API_KEY is empty.")
         return False
 
     user_prompt = (f"Job Description: {job_description}\n\n"
@@ -396,8 +393,8 @@ def is_job_fits_resume(job_description):
 
 
 def is_job_fits_conditions(job_description):
-    if not api_key:
-        print("Error: GEMINI_API_KEY is empty.")
+    if not llm_api_key:
+        print("Error: LLM_API_KEY is empty.")
         return False
 
     user_prompt = (f"Job Description: {job_description}\n\n"
@@ -530,4 +527,13 @@ def get_jobs_to_add(all_jobs, job_list):
 
 
 if __name__ == "__main__":
-    main()
+    counter = 1
+    try:
+        while True:
+            print(f"Начинаем цикл скраппинга: {counter}")
+            main()
+            counter += 1
+            print(f"Скраппинг завершен успешно, ожидаем: {config['TIMEOUT_BETWEEN_STARTS']} секунд")
+            tm.sleep(config['TIMEOUT_BETWEEN_STARTS'])
+    except Exception as ex:
+        print(f"Во время работы Скраппера произошла ошибка: {ex}")

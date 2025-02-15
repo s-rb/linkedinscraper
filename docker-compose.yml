@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  job-scrapper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: "job-scrapper"
+#    command: /bin/bash /app/main.sh
+    ports:
+      - "5001:5001"
+    volumes:
+      - data:/app/data
+
+volumes:
+  data:

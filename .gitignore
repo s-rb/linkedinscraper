@@ -17,4 +17,5 @@ SupabaseUpload/
 .env
 !run.sh
 !run_ui.sh
+!main.sh
 proxies.json.**

@@ -18,15 +18,16 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 import os
 from pdfminer.high_level import extract_text
 
+GEMINI_MODEL = 'gemini-2.0-flash-exp'
 GEMINI_API_KEY = 'GEMINI_API_KEY'
-JOBS_FILTERED_CSV = 'linkedin_jobs_filtered.csv'
-LINKEDIN_JOBS_CSV = 'linkedin_jobs.csv'
+JOBS_FILTERED_CSV = '../../linkedin_jobs_filtered.csv'
+LINKEDIN_JOBS_CSV = '../../linkedin_jobs.csv'
 TEMP_LINKEDIN_JOBS_CSV = 'temp_linkedin_jobs.csv'
 
 api_key = os.getenv(GEMINI_API_KEY)  # Get API key from environment
 chat = ChatGoogleGenerativeAI(
     api_key=api_key,
-    model='gemini-2.0-flash-exp',
+    model=GEMINI_MODEL,
     temperature=0,
     max_tokens=None,
     timeout=None,
@@ -42,7 +43,7 @@ def load_config(file_name):
 
 
 proxy_list = load_config('proxies.json')
-config = load_config('config.json')
+config = load_config('../../config.json')
 
 
 def read_pdf(file_path):
@@ -174,11 +175,10 @@ def remove_irrelevant_jobs(joblist):
     new_joblist = []
     counter = 1
     for job in joblist:
-        print(f"- {counter} of {len(joblist)}: checking is job fits conditions")
+        print(f"- {counter} of {len(joblist)}: checking if job fits conditions")
         counter += 1
-        if is_job_fits_conditions(f"{job['job_description']}\n{job['job_description']}"):
+        if is_job_relevant(job) and is_job_fits_conditions(f"{job['title']}\n{job['job_description']}"):
             new_joblist.append(job)
-        tm.sleep(5000 / 1000) # 15 requests per minute max
 
     return new_joblist
 #
@@ -191,6 +191,13 @@ def remove_irrelevant_jobs(joblist):
 #     new_joblist = [job for job in new_joblist if not any(word.lower() in job['company'].lower() for word in config['company_exclude'])] if len(config['company_exclude']) > 0 else new_joblist
 #
 #     return new_joblist
+
+def is_job_relevant(job):
+#     #Filter out jobs based on description, title, and language. Set up in config.json.
+    if len(config['desc_words']) and not any(word.lower() in job['job_description'].lower() for word in config['desc_words']): return False
+    if len(config['title_exclude']) > 0 and any(word.lower() in job['title'].lower() for word in config['title_exclude']): return False
+    if len(config['title_include']) > 0 and not any(word.lower() in job['title'].lower() for word in config['title_include']): return False
+    return True
 
 def remove_duplicates(joblist):
     # Remove duplicate jobs in the joblist. Duplicate is defined as having the same title and company.
@@ -222,18 +229,17 @@ def create_connection():
     path = config['db_path']
     try:
         conn = sqlite3.connect(path) # creates a SQL database in the 'data' directory
-        #print(sqlite3.version)
     except Error as e:
         print(e)
 
     return conn
 
 def create_table(conn, df, table_name):
-    ''''
+    """
     # Create a new table with the data from the dataframe
     df.to_sql(table_name, conn, if_exists='replace', index=False)
     print (f"Created the {table_name} table and added {len(df)} records")
-    '''
+    """
     # Create a new table with the data from the DataFrame
     # Prepare data types mapping from pandas to SQLite
     type_mapping = {
@@ -385,13 +391,19 @@ def is_job_fits_resume(job_description):
         return response == 'true'
     except ResourceExhausted as ex:
         print(f"Retryable error when calling Gemini: {ex}")
-        tm.sleep(5)
-        completion = call_chat(messages)
-        response = completion.content.strip().lower()
-        return response == 'true'
+        tm.sleep(30)
+        try:
+            completion = call_chat(messages)
+            response = completion.content.strip().lower()
+            return response == 'true'
+        except Exception as ex:
+            print(f"Error connecting to Gemini: {ex}")
+            return False
     except Exception as e:
         print(f"Error connecting to Gemini: {e}")
         return False
+    finally:
+        tm.sleep(5000 / 1000) # 15 requests per second
 
 
 def is_job_fits_conditions(job_description):
@@ -429,6 +441,8 @@ def is_job_fits_conditions(job_description):
     except Exception as e:
         print(f"Error connecting to Gemini: {e}")
         return False
+    finally:
+        tm.sleep(5000 / 1000) # 15 requests per minute max
 
 
 def call_chat(messages):
@@ -508,7 +522,7 @@ def get_jobs_to_add(all_jobs, job_list):
     for job in all_jobs:
         job_date = convert_date_format(job['date'])
         job_date = datetime.combine(job_date, time())
-        # if job is older than a week, skip it
+        # if job is older than days_to_scrape, skip it
         if job_date < datetime.now() - timedelta(days=config['days_to_scrape']):
             continue
         print('Found new job: ', job['title'], 'at ', job['company'], job['job_url'])
@@ -527,5 +541,4 @@ def get_jobs_to_add(all_jobs, job_list):
 
 
 if __name__ == "__main__":
-
     main()

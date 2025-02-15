@@ -30,7 +30,7 @@ chat = ChatGoogleGenerativeAI(
     model=GEMINI_MODEL,
     temperature=0,
     max_tokens=None,
-    timeout=None,
+    timeout=10.0,
     max_retries=2,
 )  # Initialize with the new API key
 
@@ -181,19 +181,8 @@ def remove_irrelevant_jobs(joblist):
             new_joblist.append(job)
 
     return new_joblist
-#
-# def remove_irrelevant_jobs(joblist):
-#     #Filter out jobs based on description, title, and language. Set up in config.json.
-#     new_joblist = [job for job in joblist if not any(word.lower() in job['job_description'].lower() for word in config['desc_words'])]
-#     new_joblist = [job for job in new_joblist if not any(word.lower() in job['title'].lower() for word in config['title_exclude'])] if len(config['title_exclude']) > 0 else new_joblist
-#     new_joblist = [job for job in new_joblist if any(word.lower() in job['title'].lower() for word in config['title_include'])] if len(config['title_include']) > 0 else new_joblist
-#     new_joblist = [job for job in new_joblist if safe_detect(job['job_description']) in config['languages']] if len(config['languages']) > 0 else new_joblist
-#     new_joblist = [job for job in new_joblist if not any(word.lower() in job['company'].lower() for word in config['company_exclude'])] if len(config['company_exclude']) > 0 else new_joblist
-#
-#     return new_joblist
 
 def is_job_relevant(job):
-#     #Filter out jobs based on description, title, and language. Set up in config.json.
     if len(config['desc_words']) and not any(word.lower() in job['job_description'].lower() for word in config['desc_words']): return False
     if len(config['title_exclude']) > 0 and any(word.lower() in job['title'].lower() for word in config['title_exclude']): return False
     if len(config['title_include']) > 0 and not any(word.lower() in job['title'].lower() for word in config['title_include']): return False

@@ -1,4 +1,4 @@
-from logging import warning, debug
+from logging import warning, debug, error
 
 import requests
 import json
@@ -608,4 +608,4 @@ if __name__ == "__main__":
             print(f"Скраппинг завершен успешно, ожидаем: {config['TIMEOUT_BETWEEN_STARTS']} секунд")
             tm.sleep(config['TIMEOUT_BETWEEN_STARTS'])
     except Exception as ex:
-        print(f"Во время работы Скраппера произошла ошибка: {ex}")
+        error("Во время работы Скраппера произошла ошибка",ex)

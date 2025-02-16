@@ -1,5 +1,7 @@
 import json
 import sqlite3
+import time
+from logging import error, warning
 
 import pandas as pd
 from flask import Flask, render_template, jsonify, request
@@ -268,8 +270,15 @@ def verify_db_schema():
     conn.close()
 
 if __name__ == "__main__":
+    timeout = 300
     try:
-        verify_db_schema()  # Verify the DB schema before running the app
+        while True:
+            try:
+                verify_db_schema()  # Verify the DB schema before running the app
+                break
+            except Exception as e:
+                warning(f"Во время проверки БД, произошла ошибка. Пока не запускаем UI и ждем: {timeout} секунд", e)
+                time.sleep(timeout)
         app.run(debug=True, host='0.0.0.0', port=5001)
     except Exception as ex:
-        print(f"Во время работы приложения с UI произошла ошибка: {ex}")
+        error(f"Во время работы приложения с UI произошла ошибка", ex)

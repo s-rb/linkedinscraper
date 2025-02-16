@@ -6,7 +6,6 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: "job-scrapper"
-#    command: /bin/bash /app/main.sh
     ports:
       - "5001:5001"
     volumes:

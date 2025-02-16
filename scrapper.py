@@ -1,3 +1,5 @@
+from logging import warning, debug
+
 import requests
 import json
 import sqlite3
@@ -17,6 +19,8 @@ from fake_useragent import UserAgent
 from langchain_google_genai import ChatGoogleGenerativeAI
 import os
 from pdfminer.high_level import extract_text
+
+NOT_FIND_JOB_DESCRIPTION = "Could not find Job Description"
 
 JOBS_FILTERED_CSV = 'linkedin_jobs_filtered.csv'
 LINKEDIN_JOBS_CSV = 'linkedin_jobs.csv'
@@ -43,6 +47,9 @@ chat = ChatGoogleGenerativeAI(
     max_tokens=None,
     timeout=10.0,
     max_retries=2)  # Initialize with the new API key
+
+CONFIG_DB_PATH = config["db_path"]
+DB_PATH = f"{CONFIG_DB_PATH}"
 
 
 def read_pdf(file_path):
@@ -141,26 +148,86 @@ def transform(soup):
         joblist.append(job)
     return joblist
 
+def transform_job_id(soup):
+    div = soup.find('div', id='job-details')
+    if div:
+        return prepare_description(div)
+    else:
+        return NOT_FIND_JOB_DESCRIPTION
+
+
+def prepare_description(soup):
+    # Удаляем ненужные теги, если необходимо
+    for script in soup(["script", "style"]):  # Удаляем скрипты и стили
+        script.decompose()
+
+    # Обрабатываем текст, сохраняя форматирование
+    text = []
+    for element in soup.find_all(['p', 'h1', 'h2', 'h3', 'ul', 'ol', 'li']):
+        if element.name in ['p', 'h1', 'h2', 'h3']:
+            # Извлекаем текст
+            paragraph_text = element.get_text(strip=True)
+            # Добавляем пробелы вокруг текста, заключенного в strong и b
+            for sub_element in element.find_all(['strong', 'b']):
+                paragraph_text = paragraph_text.replace(sub_element.get_text(strip=True), f" {sub_element.get_text(strip=True)} ")
+            text.append(paragraph_text)
+        elif element.name in ['ul', 'ol']:
+            for li in element.find_all('li'):
+                # Извлекаем текст
+                list_item_text = li.get_text(strip=True)
+                # Добавляем пробелы вокруг текста, заключенного в strong и b
+                for sub_element in li.find_all(['strong', 'b']):
+                    list_item_text = list_item_text.replace(sub_element.get_text(strip=True), f" {sub_element.get_text(strip=True)} ")
+                text.append(f"- {list_item_text}")  # Сохраняем списки с маркерами
+
+    return '\n'.join(text)
+
+# def prepare_description(html_content):
+#     # Удаляем ненужные теги, если необходимо
+#     for script in html_content(["script", "style"]):  # Удаляем скрипты и стили
+#         script.decompose()
+#
+#     # Обрабатываем текст, сохраняя форматирование
+#     text = []
+#     for element in html_content.find_all(['p', 'h1', 'h2', 'h3', 'ul', 'ol', 'li']):
+#         if element.name in ['p', 'h1', 'h2', 'h3']:
+#             # Обрабатываем текст внутри strong и b
+#             for sub_element in element.find_all(['strong', 'b']):
+#                 sub_element.insert_before(' ')  # Добавляем пробел перед strong/b
+#                 sub_element.insert_after(' ')   # Добавляем пробел после strong/b
+#             text.append(element.get_text(strip=True))
+#         elif element.name in ['ul', 'ol']:
+#             for li in element.find_all('li'):
+#                 # Обрабатываем текст внутри strong и b
+#                 for sub_element in li.find_all(['strong', 'b']):
+#                     sub_element.insert_before(' ')  # Добавляем пробел перед strong/b
+#                     sub_element.insert_after(' ')   # Добавляем пробел после strong/b
+#                 text.append(f"- {li.get_text(strip=True)}")  # Сохраняем списки с маркерами
+#
+#     return '\n'.join(text)
+
+# def prepare_description(div):
+#     # Remove unwanted elements
+#     for element in div.find_all(['span', 'a']):
+#         element.decompose()
+#     # Replace bullet points
+#     for ul in div.find_all('ul'):
+#         for li in ul.find_all('li'):
+#             li.insert(0, '-')
+#     text = div.get_text(separator='\n').strip()
+#     text = text.replace('\n\n', '')
+#     text = text.replace('::marker', '-')
+#     text = text.replace('-\n', '- ')
+#     text = text.replace('Show less', '').replace('Show more', '')
+#     return text
+
+
 def transform_job(soup):
     div = soup.find('div', class_='description__text description__text--rich')
     if div:
-        # Remove unwanted elements
-        for element in div.find_all(['span', 'a']):
-            element.decompose()
-
-        # Replace bullet points
-        for ul in div.find_all('ul'):
-            for li in ul.find_all('li'):
-                li.insert(0, '-')
-
-        text = div.get_text(separator='\n').strip()
-        text = text.replace('\n\n', '')
-        text = text.replace('::marker', '-')
-        text = text.replace('-\n', '- ')
-        text = text.replace('Show less', '').replace('Show more', '')
-        return text
+        return prepare_description(div)
     else:
-        return "Could not find Job Description"
+        return NOT_FIND_JOB_DESCRIPTION
 
 def safe_detect(text):
     try:
@@ -168,18 +235,25 @@ def safe_detect(text):
     except LangDetectException:
         return 'en'
 
-def remove_irrelevant_jobs(joblist):
+def filter_jobs_keywords(joblist):
     new_joblist = []
-    counter = 1
+    count = 1
     for job in joblist:
-        print(f"- {counter} of {len(joblist)}: checking if job fits conditions")
-        counter += 1
-        if is_job_relevant(job) and is_job_fits_conditions(f"{job['title']}\n{job['job_description']}"):
-            new_joblist.append(job)
-
+        print(f"- {count} of {len(joblist)}: checking if job matches keywords")
+        count += 1
+        if has_keywords(job): new_joblist.append(job)
     return new_joblist
 
-def is_job_relevant(job):
+def filter_jobs_ai(joblist):
+    new_joblist = []
+    count = 1
+    for job in joblist:
+        print(f"- {count} of {len(joblist)}: checking if ai matches the job")
+        count += 1
+        if is_job_fits_conditions(f"{job['title']}\n{job['job_description']}"): new_joblist.append(job)
+    return new_joblist
+
+def has_keywords(job):
     if len(config['desc_words']) and not any(word.lower() in job['job_description'].lower() for word in config['desc_words']): return False
     if len(config['title_exclude']) > 0 and any(word.lower() in job['title'].lower() for word in config['title_exclude']): return False
     if len(config['title_include']) > 0 and not any(word.lower() in job['title'].lower() for word in config['title_include']): return False
@@ -212,9 +286,8 @@ def convert_date_format(date_string):
 def create_connection():
     # Create a database connection to a SQLite database
     conn = None
-    path = f"../../{config['db_path']}"
     try:
-        conn = sqlite3.connect(path) # creates a SQL database in the 'data' directory
+        conn = sqlite3.connect(DB_PATH) # creates a SQL database in the 'data' directory
     except Error as e:
         print(e)
 
@@ -293,7 +366,7 @@ def table_exists(conn, table_name):
     return False
 
 def job_exists(df, job):
-    # Check if the job already exists in the dataframe
+    # Check if the job already exists in the datafraDB_PATHme
     if df.empty:
         return False
     #return ((df['title'] == job['title']) & (df['company'] == job['company']) & (df['date'] == job['date'])).any()
@@ -477,7 +550,7 @@ def process_temp_csv_jobs(conn, filtered_jobs_tablename, jobs_tablename):
     # Данные сохранены, теперь надо обработать нерелевантные и сохранить окончательно только подходящие
     # Загрузка данных из CSV файла
     job_list = pd.read_csv(TEMP_LINKEDIN_JOBS_CSV, encoding='utf-8').to_dict('records')
-    jobs_to_add = remove_irrelevant_jobs(job_list)
+    jobs_to_add = filter_jobs_keywords(job_list)
     # Create a list for jobs removed based on job description keywords - they will be added to the filtered_jobs table
     filtered_list = [job for job in job_list if job not in jobs_to_add]
     df = pd.DataFrame(jobs_to_add)
@@ -485,23 +558,26 @@ def process_temp_csv_jobs(conn, filtered_jobs_tablename, jobs_tablename):
     df_filtered['date_loaded'] = datetime.now()
     df_filtered['date_loaded'] = df_filtered['date_loaded'].astype(str)
     if conn is not None:
-        # Update or Create the database table for the job list
-        if table_exists(conn, jobs_tablename):
-            update_table(conn, df, jobs_tablename)
-        else:
-            create_table(conn, df, jobs_tablename)
-
-        # Update or Create the database table for the filtered out jobs
-        if table_exists(conn, filtered_jobs_tablename):
-            update_table(conn, df_filtered, filtered_jobs_tablename)
-        else:
-            create_table(conn, df_filtered, filtered_jobs_tablename)
+        save_data_to_db(conn, df, df_filtered, filtered_jobs_tablename, jobs_tablename)
     else:
         print("Error! cannot create the database connection.")
     df.to_csv(LINKEDIN_JOBS_CSV, index=False, encoding='utf-8')
     df_filtered.to_csv(JOBS_FILTERED_CSV, index=False, encoding='utf-8')
     # Удаление временного файла, если он существует
     if os.path.exists(TEMP_LINKEDIN_JOBS_CSV): os.remove(TEMP_LINKEDIN_JOBS_CSV)
+
+
+def save_data_to_db(conn, df, df_filtered, filtered_jobs_tablename, jobs_tablename):
+    # Update or Create the database table for the job list
+    if table_exists(conn, jobs_tablename):
+        update_table(conn, df, jobs_tablename)
+    else:
+        create_table(conn, df, jobs_tablename)
+    # Update or Create the database table for the filtered out jobs
+    if table_exists(conn, filtered_jobs_tablename):
+        update_table(conn, df_filtered, filtered_jobs_tablename)
+    else:
+        create_table(conn, df_filtered, filtered_jobs_tablename)
 
 
 def get_jobs_to_add(all_jobs, job_list):
@@ -512,18 +588,26 @@ def get_jobs_to_add(all_jobs, job_list):
         if job_date < datetime.now() - timedelta(days=config['days_to_scrape']):
             continue
         print('Found new job: ', job['title'], 'at ', job['company'], job['job_url'])
-        desc_soup = get_with_retry(job['job_url'])
-        job['job_description'] = transform_job(desc_soup)
+        job['job_description'] = get_job_description(job['job_url'])
         language = safe_detect(job['job_description'])
         if language not in config['languages']:
             print('Job description language not supported: ', language)
             # continue
         job_list.append(job)
     # Final check - removing jobs based on job description keywords words from the config file
-    # jobs_to_add = remove_irrelevant_jobs(job_list)
-    jobs_to_add = job_list
+    jobs_to_add = filter_jobs_ai(job_list)
     print("Total jobs to add: ", len(jobs_to_add))
     return jobs_to_add
+
+
+def get_job_description(url):
+    desc_soup = get_with_retry(url)
+    desc = transform_job(desc_soup)
+    if desc == NOT_FIND_JOB_DESCRIPTION:
+        desc = transform_job_id(desc_soup)
+    if desc == NOT_FIND_JOB_DESCRIPTION:
+        warning(f"WARNING! Not found job description for url: {url}")
+    return desc
 
 
 if __name__ == "__main__":

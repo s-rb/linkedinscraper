@@ -5,4 +5,4 @@ if [ $? -ne 0 ]; then
     echo "Ошибка при выполнении скрипта"
     exit 1
 fi
-python3 -u main_app.py
+python3 -u app.py

@@ -31,3 +31,5 @@ COPY . /app
 RUN chmod +x main.sh
 
 EXPOSE 5001
+
+ENTRYPOINT ["/bin/bash", "main.sh"]

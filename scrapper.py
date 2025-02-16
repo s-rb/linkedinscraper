@@ -18,7 +18,6 @@ from langdetect.lang_detect_exception import LangDetectException
 from fake_useragent import UserAgent
 from langchain_google_genai import ChatGoogleGenerativeAI
 import os
-from pdfminer.high_level import extract_text
 
 from resume_generator import get_resume
 

@@ -20,6 +20,8 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 import os
 from pdfminer.high_level import extract_text
 
+from resume_generator import get_resume
+
 NOT_FIND_JOB_DESCRIPTION = "Could not find Job Description"
 
 JOBS_FILTERED_CSV = 'linkedin_jobs_filtered.csv'
@@ -51,20 +53,7 @@ chat = ChatGoogleGenerativeAI(
 CONFIG_DB_PATH = config["db_path"]
 DB_PATH = f"{CONFIG_DB_PATH}"
 
-
-def read_pdf(file_path):
-    try:
-        text = extract_text(file_path)
-        return text
-    except FileNotFoundError:
-        print(f"Error: The file '{file_path}' was not found.")
-        return None
-    except Exception as e:
-        print(f"An error occurred while reading the PDF: {e}")
-        return None
-
-
-resume = read_pdf(config["resume_path"])
+resume = get_resume()
 
 
 def get_with_proxy(url):

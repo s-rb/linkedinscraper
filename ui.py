@@ -1,17 +1,13 @@
-from inspect import Traceback
-from os import system
-from pyexpat.errors import messages
-
-from flask import Flask, render_template, jsonify, request
-import pandas as pd
-import sqlite3
 import json
+import sqlite3
 
-from google.api_core.operations_v1.operations_client_config import config
-from pdfminer.high_level import extract_text
+import pandas as pd
+from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
-import os  # Add this import for environment variable access
 from langchain_google_genai import ChatGoogleGenerativeAI
+
+from resume_generator import get_resume
+
 
 def load_config(file_name):
     # Load the config file
@@ -30,29 +26,7 @@ llm_model = config['LLM_MODEL']
 
 chat = ChatGoogleGenerativeAI(api_key=llm_api_key, model=llm_model)
 
-def read_pdf(file_path):
-    try:
-        text = extract_text(file_path)
-        return text
-    except FileNotFoundError:
-        print(f"Error: The file '{file_path}' was not found.")
-        return None
-    except Exception as e:
-        print(f"An error occurred while reading the PDF: {e}")
-        return None
-
-# db = load_config('config.json')['db_path']
-# try:
-#     api_key = load_config('config.json')['OpenAI_API_KEY']
-#     print("API key found")
-# except:
-#     print("No OpenAI API key found. Please add one to config.json")
-
-# try:
-#     gpt_model = load_config('config.json')['OpenAI_Model']
-#     print("Model found")
-# except:
-#     print("No OpenAI Model found or it's incorrectly specified in the config. Please add one to config.json")
+resume = get_resume()
 
 @app.route('/')
 def home():
@@ -179,7 +153,6 @@ def get_resume(job_id):
         column_names = [column[0] for column in cursor.description]
         # Create a dictionary mapping column names to row values
         job = dict(zip(column_names, job_tuple))
-    resume = read_pdf(config["resume_path"])
 
     # Check if GEMINI_API_KEY is empty
     if not llm_api_key:
@@ -232,8 +205,6 @@ def get_CoverLetter(job_id):
     if job_tuple is not None:
         column_names = [column[0] for column in cursor.description]
         job = dict(zip(column_names, job_tuple))
-
-    resume = read_pdf(config["resume_path"])
 
     # Check if resume is None
     if resume is None:

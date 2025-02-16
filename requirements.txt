@@ -4,6 +4,6 @@ requests
 beautifulsoup4
 pandas
 langdetect
-pdfminer.six
 langchain_google_genai
 fake-useragent
+pyyaml

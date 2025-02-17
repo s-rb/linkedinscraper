@@ -315,8 +315,8 @@ def remove_duplicates(joblist):
 
 def convert_date_format(date_string):
     """
-    Converts a date string to a date object. 
-    
+    Converts a date string to a date object.
+
     Args:
         date_string (str): The date in string format.
 
@@ -356,13 +356,13 @@ def create_table(conn, df, table_name):
         'object': 'TEXT',
         'bool': 'INTEGER'
     }
-    
+
     # Prepare a string with column names and their types
     columns_with_types = ', '.join(
         f'"{column}" {type_mapping[str(df.dtypes[column])]}'
         for column in df.columns
     )
-    
+
     # Prepare SQL query to create a new table
     create_table_sql = f"""
         CREATE TABLE IF NOT EXISTS "{table_name}" (
@@ -370,11 +370,11 @@ def create_table(conn, df, table_name):
             {columns_with_types}
         );
     """
-    
+
     # Execute SQL query
     cursor = conn.cursor()
     cursor.execute(create_table_sql)
-    
+
     # Commit the transaction
     conn.commit()
 
@@ -385,7 +385,7 @@ def create_table(conn, df, table_name):
     """
     for record in df.to_dict(orient='records'):
         cursor.execute(insert_sql, list(record.values()))
-    
+
     # Commit the transaction
     conn.commit()
 
@@ -654,7 +654,7 @@ def get_jobs_to_add(all_jobs, job_list):
     return jobs_to_add
 
 
-def get_job_description(url, retries=2):
+def get_job_description(url, retries=3):
     desc_soup = get_with_retry(url)
 
     for i in range(retries):
@@ -664,8 +664,11 @@ def get_job_description(url, retries=2):
 
             desc = transform_job_id(desc_soup)
             if desc is not None and desc != NOT_FIND_JOB_DESCRIPTION: return f"\n\n!!!!\n{desc}"
+
+            tm.sleep((retries + 1) * 180)
         except Exception as ex:
             error(f"Во время обработки url: {url} произошла ошибка", ex)
+            tm.sleep((retries + 1) * 180)
 
     warning(f"Not found job description for url: {url}")
     return NOT_FIND_JOB_DESCRIPTION

@@ -99,7 +99,8 @@ def calculate_duration(started, finished):
     years, months = divmod(delta.days // 30, 12)
     return f"{years}y {months}m"
 
-
+# todo выкачивать данные для резюме из центрального хранилища (blog / site) и заменять тут
+# настроить джобу для сборки и скрипта
 def get_resume():
     with open('cv_data.yml', 'r', encoding='utf-8') as file:
         cv_data = yaml.safe_load(file)  # Load data from file

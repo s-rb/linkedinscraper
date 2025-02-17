@@ -109,31 +109,34 @@ def transform(soup):
         print("Empty page, no jobs found")
         return joblist
     for item in divs:
-        title = item.find('h3').text.strip()
-        company = item.find('a', class_='hidden-nested-link')
-        location = item.find('span', class_='job-search-card__location')
-        parent_div = item.parent
-        entity_urn = parent_div['data-entity-urn']
-        job_posting_id = entity_urn.split(':')[-1]
-        job_url = 'http://www.linkedin.com/jobs/view/'+job_posting_id+'/'
+        try:
+            title = item.find('h3').text.strip()
+            company = item.find('a', class_='hidden-nested-link')
+            location = item.find('span', class_='job-search-card__location')
+            parent_div = item.parent
+            entity_urn = parent_div['data-entity-urn']
+            job_posting_id = entity_urn.split(':')[-1]
+            job_url = 'http://www.linkedin.com/jobs/view/'+job_posting_id+'/'
 
-        date_tag_new = item.find('time', class_ = 'job-search-card__listdate--new')
-        date_tag = item.find('time', class_='job-search-card__listdate')
-        date = date_tag['datetime'] if date_tag else date_tag_new['datetime'] if date_tag_new else ''
-        job_description = ''
-        job = {
-            'title': title,
-            'company': company.text.strip().replace('\n', ' ') if company else '',
-            'location': location.text.strip() if location else '',
-            'date': date,
-            'job_url': job_url,
-            'job_description': job_description,
-            'applied': 0,
-            'hidden': 0,
-            'interview': 0,
-            'rejected': 0
-        }
-        joblist.append(job)
+            date_tag_new = item.find('time', class_ = 'job-search-card__listdate--new')
+            date_tag = item.find('time', class_='job-search-card__listdate')
+            date = date_tag['datetime'] if date_tag else date_tag_new['datetime'] if date_tag_new else ''
+            job_description = ''
+            job = {
+                'title': title,
+                'company': company.text.strip().replace('\n', ' ') if company else '',
+                'location': location.text.strip() if location else '',
+                'date': date,
+                'job_url': job_url,
+                'job_description': job_description,
+                'applied': 0,
+                'hidden': 0,
+                'interview': 0,
+                'rejected': 0
+            }
+            joblist.append(job)
+        except Exception as e:
+            error("Во время обработки элемента div произошла ошибка", e, stack_info=True)
     return joblist
 
 def transform_job_id(soup):
@@ -144,21 +147,90 @@ def transform_job_id(soup):
         return NOT_FIND_JOB_DESCRIPTION
 
 
-def prepare_description(soup):
+def prepare_description(html_content):
+    # Удаляем ненужные теги, если необходимо
+    for script in html_content(["script", "style"]):  # Удаляем скрипты и стили
+        script.decompose()
+
+    # Обрабатываем текст, сохраняя форматирование
+    text = []
+
+    # Рекурсивная функция для обработки элементов
+    def process_element(element):
+        if element.name == 'li':
+            # Извлекаем текст и добавляем "- " в начало
+            list_item_text = element.get_text(strip=True)
+            element.replace_with(f"- {list_item_text}")
+        if element.name == 'strong' or element.name == 'b':
+            element.name = 'p'  # Заменяем тег на p
+            # Удаляем пробелы перед и после текста, если необходимо
+            element.insert_before(' ')
+            element.insert_after(' ')
+
+        # Обрабатываем дочерние элементы
+        for child in element.children:
+            if isinstance(child, str):  # Проверяем, является ли дочерний элемент текстом
+                continue  # Пропускаем текстовые узлы
+            process_element(child)  # Рекурсивно обрабатываем дочерний элемент
+
+    # Начинаем обработку с корневого элемента
+    for element in html_content.find_all(['p', 'h1', 'h2', 'h3', 'ul', 'ol', 'div']):
+        process_element(element)
+
+    for element in html_content.find_all(['div','p', 'h1', 'h2', 'h3', 'ul', 'ol', 'li']):
+        text.append(element.get_text(separator='\n', strip=True))
+
+    # Финальная строка
+    final_string = ""
+
+    # Проходим по массиву строк
+    for string in text:
+        # Проверяем, содержится ли строка в финальной строке
+        if string not in final_string:
+            # Если не содержится, конкатенируем
+            final_string += string + "\n"  # Добавляем пробел для разделения
+
+    return final_string.strip()
+
+
+def process_list_items(html_content):
+    # Рекурсивная функция для обработки элементов
+    def process_element(element):
+        if element.name == 'li':
+            # Извлекаем текст и добавляем "- " в начало
+            list_item_text = element.get_text(strip=True)
+            element.replace_with(f"- {list_item_text}")
+        if element.name == 'strong' or element.name == 'b':
+            list_item_text = element.get_text(strip=True)
+            element.replace_with(f" {list_item_text} ")
+
+        # Обрабатываем дочерние элементы
+        for child in element.children:
+            if isinstance(child, str):  # Проверяем, является ли дочерний элемент текстом
+                continue  # Пропускаем текстовые узлы
+            process_element(child)  # Рекурсивно обрабатываем дочерний элемент
+
+    # Начинаем обработку с корневого элемента
+    for element in html_content.find_all(['p', 'h1', 'h2', 'h3', 'ul', 'ol', 'div']):
+        process_element(element)
+
+
+def prepare_description2(soup):
     # Удаляем ненужные теги, если необходимо
     for script in soup(["script", "style"]):  # Удаляем скрипты и стили
         script.decompose()
 
     # Обрабатываем текст, сохраняя форматирование
     text = []
-    for element in soup.find_all(['p', 'h1', 'h2', 'h3', 'ul', 'ol', 'li']):
-        if element.name in ['p', 'h1', 'h2', 'h3']:
+    for element in soup.find_all(['p', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'div']):
+        if element.name in ['p', 'h1', 'h2', 'h3', 'div']:
             # Извлекаем текст
             paragraph_text = element.get_text(strip=True)
             # Добавляем пробелы вокруг текста, заключенного в strong и b
             for sub_element in element.find_all(['strong', 'b']):
                 paragraph_text = paragraph_text.replace(sub_element.get_text(strip=True), f" {sub_element.get_text(strip=True)} ")
-            text.append(paragraph_text)
+            if paragraph_text:  # Проверяем, что текст не пустой
+                text.append(paragraph_text)
         elif element.name in ['ul', 'ol']:
             for li in element.find_all('li'):
                 # Извлекаем текст
@@ -170,44 +242,29 @@ def prepare_description(soup):
 
     return '\n'.join(text)
 
-# def prepare_description(html_content):
-#     # Удаляем ненужные теги, если необходимо
-#     for script in html_content(["script", "style"]):  # Удаляем скрипты и стили
-#         script.decompose()
-#
-#     # Обрабатываем текст, сохраняя форматирование
-#     text = []
-#     for element in html_content.find_all(['p', 'h1', 'h2', 'h3', 'ul', 'ol', 'li']):
-#         if element.name in ['p', 'h1', 'h2', 'h3']:
-#             # Обрабатываем текст внутри strong и b
-#             for sub_element in element.find_all(['strong', 'b']):
-#                 sub_element.insert_before(' ')  # Добавляем пробел перед strong/b
-#                 sub_element.insert_after(' ')   # Добавляем пробел после strong/b
-#             text.append(element.get_text(strip=True))
-#         elif element.name in ['ul', 'ol']:
-#             for li in element.find_all('li'):
-#                 # Обрабатываем текст внутри strong и b
-#                 for sub_element in li.find_all(['strong', 'b']):
-#                     sub_element.insert_before(' ')  # Добавляем пробел перед strong/b
-#                     sub_element.insert_after(' ')   # Добавляем пробел после strong/b
-#                 text.append(f"- {li.get_text(strip=True)}")  # Сохраняем списки с маркерами
-#
-#     return '\n'.join(text)
+def prepare_description3(html_content):
+    # Удаляем ненужные теги, если необходимо
+    for script in html_content(["script", "style"]):  # Удаляем скрипты и стили
+        script.decompose()
 
-# def prepare_description(div):
-#     # Remove unwanted elements
-#     for element in div.find_all(['span', 'a']):
-#         element.decompose()
-#     # Replace bullet points
-#     for ul in div.find_all('ul'):
-#         for li in ul.find_all('li'):
-#             li.insert(0, '-')
-#     text = div.get_text(separator='\n').strip()
-#     text = text.replace('\n\n', '')
-#     text = text.replace('::marker', '-')
-#     text = text.replace('-\n', '- ')
-#     text = text.replace('Show less', '').replace('Show more', '')
-#     return text
+    # Обрабатываем текст, сохраняя форматирование
+    text = []
+    for element in html_content.find_all(['p', 'h1', 'h2', 'h3', 'ul', 'ol', 'li']):
+        if element.name in ['p', 'h1', 'h2', 'h3']:
+            # Обрабатываем текст внутри strong и b
+            for sub_element in element.find_all(['strong', 'b']):
+                sub_element.insert_before(' ')  # Добавляем пробел перед strong/b
+                sub_element.insert_after(' ')   # Добавляем пробел после strong/b
+            text.append(element.get_text(strip=True))
+        elif element.name in ['ul', 'ol']:
+            for li in element.find_all('li'):
+                # Обрабатываем текст внутри strong и b
+                for sub_element in li.find_all(['strong', 'b']):
+                    sub_element.insert_before(' ')  # Добавляем пробел перед strong/b
+                    sub_element.insert_after(' ')   # Добавляем пробел после strong/b
+                text.append(f"- {li.get_text(strip=True)}")  # Сохраняем списки с маркерами
+
+    return '\n'.join(text)
 
 
 def transform_job(soup):
@@ -227,9 +284,12 @@ def filter_jobs_keywords(joblist):
     new_joblist = []
     count = 1
     for job in joblist:
-        print(f"- {count} of {len(joblist)}: checking if job matches keywords")
-        count += 1
-        if has_keywords(job): new_joblist.append(job)
+        try:
+            print(f"- {count} of {len(joblist)}: checking if job matches keywords")
+            count += 1
+            if has_keywords(job): new_joblist.append(job)
+        except Exception as e:
+            error(f"Произошла ошибка во время обработки работы:\n{job}", e, stack_info=True)
     return new_joblist
 
 def filter_jobs_ai(joblist):
@@ -373,15 +433,21 @@ def get_jobcards():
                 url = f"http://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={keywords}&location={location}&f_TPR=&f_WT={query['f_WT']}&geoId=&f_TPR={config['timespan']}&start={25*i}"
                 soup = get_with_retry(url)
                 jobs = []
-                transformed = transform(soup)
-                for job in transformed:
-                    job = {**job, "is_remote": is_remote}
-                    jobs.append(job)
+
+                try:
+                    transformed = transform(soup)
+                    for job in transformed:
+                        job = {**job, "is_remote": is_remote}
+                        jobs.append(job)
+                except Exception as e:
+                    error(f"Произошла ошибка во время обработки URL: {url}", e, stack_info=True)
+
                 all_jobs = all_jobs + jobs
                 print("Finished scraping page: ", url)
                 
                 # Pause between requests
                 tm.sleep(config['request_pause'] / 1000)  # Convert milliseconds to seconds
+
     print("=> Total job cards scraped: ", len(all_jobs))
     all_jobs = remove_duplicates(all_jobs)
     print("=> Total job cards after removing duplicates: ", len(all_jobs))
@@ -588,14 +654,21 @@ def get_jobs_to_add(all_jobs, job_list):
     return jobs_to_add
 
 
-def get_job_description(url):
+def get_job_description(url, retries=2):
     desc_soup = get_with_retry(url)
-    desc = transform_job(desc_soup)
-    if desc == NOT_FIND_JOB_DESCRIPTION:
-        desc = transform_job_id(desc_soup)
-    if desc == NOT_FIND_JOB_DESCRIPTION:
-        warning(f"WARNING! Not found job description for url: {url}")
-    return desc
+
+    for i in range(retries):
+        try:
+            desc = transform_job(desc_soup)
+            if desc is not None and desc != NOT_FIND_JOB_DESCRIPTION: return desc
+
+            desc = transform_job_id(desc_soup)
+            if desc is not None and desc != NOT_FIND_JOB_DESCRIPTION: return f"\n\n!!!!\n{desc}"
+        except Exception as ex:
+            error(f"Во время обработки url: {url} произошла ошибка", ex)
+
+    warning(f"Not found job description for url: {url}")
+    return NOT_FIND_JOB_DESCRIPTION
 
 
 if __name__ == "__main__":

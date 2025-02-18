@@ -101,8 +101,9 @@ def calculate_duration(started, finished):
 
 # todo выкачивать данные для резюме из центрального хранилища (blog / site) и заменять тут
 # настроить джобу для сборки и скрипта
+# https://github.com/s-rb/site/blob/master/_data/cv_data.yml
 def get_resume():
-    with open('cv_data.yml', 'r', encoding='utf-8') as file:
+    with open('default_cv_data.yml', 'r', encoding='utf-8') as file:
         cv_data = yaml.safe_load(file)  # Load data from file
 
     return generate_resume(cv_data)

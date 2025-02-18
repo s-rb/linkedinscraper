@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, time
 import pandas as pd
 from urllib.parse import quote
 
+from flask import jsonify
 from google.api_core.exceptions import ResourceExhausted
 from langdetect import detect
 from langdetect.lang_detect_exception import LangDetectException
@@ -298,7 +299,7 @@ def filter_jobs_ai(joblist):
     for job in joblist:
         print(f"- {count} of {len(joblist)}: checking if ai matches the job")
         count += 1
-        if is_job_fits_conditions(f"{job['title']}\n{job['job_description']}"): new_joblist.append(job)
+        if is_job_fits_resume(f"{job['title']}\n{job['job_description']}"): new_joblist.append(job)
     return new_joblist
 
 def has_keywords(job):
@@ -492,12 +493,19 @@ def is_job_fits_resume(job_description):
     messages = [
         ("system", f"You are a career coach with over 15 years of experience helping job seekers land their dream jobs in tech. "
                    f"Based on the following job description and resume, "
-                   f"please respond with only 'true' if the resume is suitable for the job, or 'false' otherwise."
+                   f"please respond with only 'true' if the job is suitable for me based on the resume, or 'false' otherwise."
                    f"Keep in mind, that main programming language is critical, but other technologies are secondary and "
-                   f"I might don't have them in my resume, but I could know them anyway"),
+                   f"although if I don't have them in my resume, but I could know them anyway"
+                   f"Also, if my work experience is not enough, but if there is a chance that I could be hired "
+                   f"based on your experience of hiring, then this job could be suitable to me anyway"
+         ),
         ("human", user_prompt)
     ]
 
+    return call_llm_boolean(messages)
+
+
+def call_llm_boolean(messages):
     try:
         completion = call_chat(messages)
         response = completion.content.strip().lower()
@@ -516,7 +524,7 @@ def is_job_fits_resume(job_description):
         print(f"Error connecting to Gemini: {e}")
         return False
     finally:
-        tm.sleep(5000 / 1000) # 15 requests per second
+        tm.sleep(5000 / 1000)  # 15 requests per second
 
 
 def is_job_fits_conditions(job_description):
@@ -537,25 +545,7 @@ def is_job_fits_conditions(job_description):
         ("human", user_prompt)
     ]
 
-    try:
-        completion = call_chat(messages)
-        response = completion.content.strip().lower()
-        return response == 'true'
-    except ResourceExhausted as ex:
-        print(f"Retryable error when calling Gemini: {ex}")
-        tm.sleep(30)
-        try:
-            completion = call_chat(messages)
-            response = completion.content.strip().lower()
-            return response == 'true'
-        except Exception as ex:
-            print(f"Exception when calling Gemini: {ex}")
-            return False
-    except Exception as e:
-        print(f"Error connecting to Gemini: {e}")
-        return False
-    finally:
-        tm.sleep(5000 / 1000) # 15 requests per minute max
+    return call_llm_boolean(messages)
 
 
 def call_chat(messages):
@@ -646,7 +636,8 @@ def get_jobs_to_add(all_jobs, job_list):
         language = safe_detect(job['job_description'])
         if language not in config['languages']:
             print('Job description language not supported: ', language)
-            # continue
+            print(job)
+            continue
         job_list.append(job)
     # Final check - removing jobs based on job description keywords words from the config file
     jobs_to_add = filter_jobs_ai(job_list)
@@ -665,13 +656,38 @@ def get_job_description(url, retries=3):
             desc = transform_job_id(desc_soup)
             if desc is not None and desc != NOT_FIND_JOB_DESCRIPTION: return f"\n\n!!!!\n{desc}"
 
-            tm.sleep((retries + 1) * 180)
+            tm.sleep((i + 1) * 30)
         except Exception as ex:
             error(f"Во время обработки url: {url} произошла ошибка", ex)
-            tm.sleep((retries + 1) * 180)
+            tm.sleep((i + 1) * 30)
+
+    save_url_to_absents_file(url)
 
     warning(f"Not found job description for url: {url}")
     return NOT_FIND_JOB_DESCRIPTION
+
+
+def save_url_to_absents_file(url):
+    try:
+        # Проверяем, существует ли файл
+        if not os.path.exists('absent_description_urls.json'):
+            # Если нет, создаем его с пустым массивом
+            with open('absent_description_urls.json', 'w') as f:
+                json.dump([], f)
+
+        # Загружаем существующий массив
+        with open('absent_description_urls.json', 'r') as f:
+            absent_urls = json.load(f)
+
+        # Добавляем текущий URL в массив
+        absent_urls.append(url)
+
+        # Сохраняем обновленный массив обратно в файл
+        with open('absent_description_urls.json', 'w') as f:
+            json.dump(absent_urls, f)
+
+    except Exception as e:
+        error(f"Ошибка при работе с absent_description_urls.json: {e}")
 
 
 if __name__ == "__main__":

@@ -277,7 +277,8 @@ if __name__ == "__main__":
                 verify_db_schema()  # Verify the DB schema before running the app
                 break
             except Exception as e:
-                warning(f"Во время проверки БД, произошла ошибка. Пока не запускаем UI и ждем: {timeout} секунд", e)
+                msg = f"Во время проверки БД, произошла ошибка. Пока не запускаем UI и ждем: {timeout} секунд"
+                warning(msg, e)
                 time.sleep(timeout)
         app.run(debug=True, host='0.0.0.0', port=5001)
     except Exception as ex:

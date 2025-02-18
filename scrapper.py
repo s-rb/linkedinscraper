@@ -488,7 +488,6 @@ def is_job_fits_resume(job_description):
     Returns:
         bool: True if the job is suitable, False otherwise.
     """
-    # Check if LLM_API_KEY is empty
     if not llm_api_key:
         print("Error: LLM_API_KEY is empty.")
         return False
@@ -496,13 +495,19 @@ def is_job_fits_resume(job_description):
     user_prompt = (f"Job Description: {job_description}\n\n"
                    f"Resume: {resume}")
     messages = [
-        ("system", f"You are a career coach with over 15 years of experience helping job seekers land their dream jobs in tech. "
-                   f"Based on the following job description and resume, "
-                   f"please respond with only 'true' if the job is suitable for me based on the resume, or 'false' otherwise."
-                   f"Keep in mind, that main programming language is critical, but other technologies are secondary and "
-                   f"although if I don't have them in my resume, but I could know them anyway"
-                   f"Also, if my work experience is not enough, but if there is a chance that I could be hired "
-                   f"based on your experience of hiring, then this job could be suitable to me anyway"
+        ("system",
+            f"You are a career coach with over 15 years of experience helping job seekers land their dream jobs in tech. "
+            f"Based on the following job description and resume, "
+            f"please respond with only 'true' if the job is suitable for me based on the resume, or 'false' otherwise. "
+            f"Keep in mind that the main programming language is critical, but other technologies are secondary. "
+            f"Even if I don't have them in my resume, I could know them anyway. "
+            f"Also, if my work experience is not enough, but there is a chance that I could be hired based on your experience of hiring, "
+            f"then this job could be suitable for me anyway. "
+            f"Additionally, please analyze the job description for remote work opportunities. I am willing to work remotely for any country, "
+            f"and I am open to relocation if the employer mentions it and offers assistance. "
+            f"If the job is only for local candidates, those already in the country, or requires a work permit for that country, "
+            f"then this job is not suitable for me"
+            # f", except for the following countries: {allowed_countries}."
          ),
         ("human", user_prompt)
     ]

@@ -441,9 +441,15 @@ def get_jobcards():
                         jobs.append(job)
                 except Exception as e:
                     error(f"Произошла ошибка во время обработки URL: {url}", e, stack_info=True)
+                    if i == 0: tg_error(f"Произошла ошибка во время обработки URL: {url}", e)
 
                 all_jobs = all_jobs + jobs
                 print("Finished scraping page: ", url)
+
+                if i == 0 and len(jobs) == 0:
+                    msg = f"Не удалось найти вакансии для ключевых слов:\n- keywords: {keywords},\n- location: {location},\n- final url: {url}"
+                    print(msg)
+                    tg_error(msg)
                 
                 # Pause between requests
                 tm.sleep(config['request_pause'] / 1000)  # Convert milliseconds to seconds

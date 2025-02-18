@@ -8,6 +8,8 @@
 
   "LLM_API_KEY": "AITW-e-n3dk",
   "LLM_MODEL": "gemini-2.0-flash-exp",
+  "MISTRAL_API_KEY": "MISTRAL_API_KEY",
+  "MISTRAL_MODEL": "mistral-large-latest",
   "TELEGRAM_BOT_TOKEN": "TELEGRAM_BOT_TOKEN",
   "TELEGRAM_CHAT_ID": 1234455,
   "search_queries": [    
@@ -32,6 +34,6 @@
   "rounds": 1,
   "days_to_scrape": 10,
   "app_table": "jobs",
-  "request_pause": 2000
+  "request_pause": 3000
   }
   

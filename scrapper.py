@@ -16,13 +16,15 @@ from langdetect import detect
 from langdetect.lang_detect_exception import LangDetectException
 from fake_useragent import UserAgent
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_mistralai import ChatMistralAI
 import os
 
 from resume_generator import get_resume
 from telegram_notifications import tg_info, tg_error
 
+MISTRAL = "mistral"
+GEMINI = "gemini"
 NOT_FIND_JOB_DESCRIPTION = "Could not find Job Description"
-
 JOBS_FILTERED_CSV = 'linkedin_jobs_filtered.csv'
 LINKEDIN_JOBS_CSV = 'linkedin_jobs.csv'
 TEMP_LINKEDIN_JOBS_CSV = 'temp_linkedin_jobs.csv'
@@ -38,12 +40,25 @@ def load_config(file_name):
 proxy_list = load_config('proxies.json')
 config = load_config('config.json')
 
-llm_model = config["LLM_MODEL"]
-llm_api_key = config["LLM_API_KEY"]  # Get API key from environment
+gemini_model = config["LLM_MODEL"]
+gemini_api_key = config["LLM_API_KEY"]  # Get API key from environment
+mistral_api_key=config["MISTRAL_API_KEY"]
+mistral_model=config["MISTRAL_MODEL"]
 
-chat = ChatGoogleGenerativeAI(
-    api_key=llm_api_key,
-    model=llm_model,
+LINKED_ID_TIMEOUT_MS = config['request_pause']
+
+gemini = ChatGoogleGenerativeAI(
+    api_key=gemini_api_key,
+    model=gemini_model,
+    temperature=0,
+    max_tokens=None,
+    timeout=10.0,
+    max_retries=2)  # Initialize with the new API key
+
+
+mistral = ChatMistralAI(
+    api_key=mistral_api_key,
+    model=mistral_model,
     temperature=0,
     max_tokens=None,
     timeout=10.0,
@@ -295,10 +310,28 @@ def filter_jobs_keywords(joblist):
 def filter_jobs_ai(joblist):
     new_joblist = []
     count = 1
+    found = "found"
+    rejected = "rejected"
+    llms_stats = {
+        GEMINI: {
+            found: 0,
+            rejected: 0
+        },
+        MISTRAL: {
+            found: 0,
+            rejected: 0
+        }
+    }
     for job in joblist:
-        print(f"- {count} of {len(joblist)}: checking if ai matches the job")
+        use_gemini = count % 2 != 0
+        ai_name = GEMINI if use_gemini else MISTRAL
+        print(f"- {count} of {len(joblist)} {ai_name}: checking if ai matches the job")
         count += 1
-        if is_job_fits_resume(f"{job['title']}\n{job['job_description']}"): new_joblist.append(job)
+        if is_job_fits_resume(f"{job['title']}\n{job['job_description']}", use_gemini):
+            llms_stats[ai_name][found] += 1
+            new_joblist.append(job)
+        else: llms_stats[ai_name][rejected] += 1
+    print(f"AI statistics: {llms_stats}")
     return new_joblist
 
 def has_keywords(job):
@@ -452,7 +485,7 @@ def get_jobcards():
                     tg_error(msg)
                 
                 # Pause between requests
-                tm.sleep(config['request_pause'] / 1000)  # Convert milliseconds to seconds
+                tm.sleep(LINKED_ID_TIMEOUT_MS / 1000)  # Convert milliseconds to seconds
 
     print("=> Total job cards scraped: ", len(all_jobs))
     all_jobs = remove_duplicates(all_jobs)
@@ -477,7 +510,7 @@ def find_new_jobs(all_jobs, conn):
     return new_joblist
 
 
-def is_job_fits_resume(job_description):
+def is_job_fits_resume(job_description, use_gemini=True):
     """
     Check if the job description is suitable for the given resume using the chat bot.
 
@@ -488,7 +521,7 @@ def is_job_fits_resume(job_description):
     Returns:
         bool: True if the job is suitable, False otherwise.
     """
-    if not llm_api_key:
+    if not gemini_api_key:
         print("Error: LLM_API_KEY is empty.")
         return False
 
@@ -506,39 +539,39 @@ def is_job_fits_resume(job_description):
             f"Additionally, please analyze the job description for remote work opportunities. I am willing to work remotely for any country, "
             f"and I am open to relocation if the employer mentions it and offers assistance. "
             f"If the job is only for local candidates, those already in the country, or requires a work permit for that country, "
-            f"then this job is not suitable for me"
+            f"then this job is not suitable for me. Don't be too strict"
             # f", except for the following countries: {allowed_countries}."
          ),
         ("human", user_prompt)
     ]
 
-    return call_llm_boolean(messages)
+    return call_llm_boolean(messages, use_gemini)
 
 
-def call_llm_boolean(messages):
+def call_llm_boolean(messages, use_gemini):
     try:
-        completion = call_chat(messages)
+        completion = call_chat(messages) if use_gemini else call_mistral(messages)
         response = completion.content.strip().lower()
         return response == 'true'
     except ResourceExhausted as ex:
-        print(f"Retryable error when calling Gemini: {ex}")
-        tm.sleep(30)
+        print(f"Retryable error when calling AI: {ex}")
+        tm.sleep(20)
         try:
-            completion = call_chat(messages)
+            completion = call_chat(messages) if use_gemini else call_mistral(messages)
             response = completion.content.strip().lower()
             return response == 'true'
         except Exception as ex:
-            print(f"Error connecting to Gemini: {ex}")
+            print(f"Error connecting to AI: {ex}")
             return False
     except Exception as e:
-        print(f"Error connecting to Gemini: {e}")
+        print(f"Error connecting to AI: {e}")
         return False
     finally:
-        tm.sleep(5000 / 1000)  # 15 requests per second
+        tm.sleep(2500 / 1000)  # 15/2 requests per minute
 
 
-def is_job_fits_conditions(job_description):
-    if not llm_api_key:
+def is_job_fits_conditions(job_description, use_gemini=True):
+    if not gemini_api_key:
         print("Error: LLM_API_KEY is empty.")
         return False
 
@@ -555,11 +588,15 @@ def is_job_fits_conditions(job_description):
         ("human", user_prompt)
     ]
 
-    return call_llm_boolean(messages)
+    return call_llm_boolean(messages, use_gemini)
 
 
 def call_chat(messages):
-    completion = chat.invoke(messages)
+    completion = gemini.invoke(messages)
+    return completion
+
+def call_mistral(messages):
+    completion = mistral.invoke(messages)
     return completion
 
 
@@ -651,6 +688,7 @@ def get_jobs_to_add(all_jobs, job_list):
             print(job)
             continue
         job_list.append(job)
+        tm.sleep(LINKED_ID_TIMEOUT_MS / 1000)
     # Final check - removing jobs based on job description keywords words from the config file
     jobs_to_add = filter_jobs_ai(job_list)
     print("Total jobs to add: ", len(jobs_to_add))

@@ -8,7 +8,8 @@
 
   "LLM_API_KEY": "AITW-e-n3dk",
   "LLM_MODEL": "gemini-2.0-flash-exp",
-
+  "TELEGRAM_BOT_TOKEN": "TELEGRAM_BOT_TOKEN",
+  "TELEGRAM_CHAT_ID": 1234455,
   "search_queries": [    
     {"keywords": "Python developer", "location": "Los Angeles", "f_WT": ""},
     {"keywords": "Python developer", "location": "USA", "f_WT": "2"}

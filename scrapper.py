@@ -3,7 +3,6 @@ from logging import warning, debug, error
 import requests
 import json
 import sqlite3
-import sys
 from sqlite3 import Error
 from bs4 import BeautifulSoup
 import time as tm
@@ -12,7 +11,6 @@ from datetime import datetime, timedelta, time
 import pandas as pd
 from urllib.parse import quote
 
-from flask import jsonify
 from google.api_core.exceptions import ResourceExhausted
 from langdetect import detect
 from langdetect.lang_detect_exception import LangDetectException
@@ -21,6 +19,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 import os
 
 from resume_generator import get_resume
+from telegram_notifications import tg_info, tg_error
 
 NOT_FIND_JOB_DESCRIPTION = "Could not find Job Description"
 
@@ -568,6 +567,7 @@ def main():
     #filtering out jobs that are already in the database
     all_jobs = find_new_jobs(all_jobs, conn)
     print ("Total new jobs found after comparing to the database: ", len(all_jobs))
+    tg_info(f"Total new jobs found after comparing to the database: {len(all_jobs)}")
 
     if len(all_jobs) > 0:
         save_jobs(all_jobs, conn, filtered_jobs_tablename, job_list, jobs_tablename)
@@ -576,6 +576,7 @@ def main():
     
     end_time = tm.perf_counter()
     print(f"Scraping finished in {end_time - start_time:.2f} seconds")
+    tg_info(f"Scraping finished in {end_time - start_time:.2f} seconds")
 
 
 def save_jobs(all_jobs, conn, filtered_jobs_tablename, job_list, jobs_tablename):
@@ -694,10 +695,13 @@ if __name__ == "__main__":
     counter = 1
     try:
         while True:
+            tg_info(f"Начинаем цикл скраппинга: {counter}")
             print(f"Начинаем цикл скраппинга: {counter}")
             main()
             counter += 1
             print(f"Скраппинг завершен успешно, ожидаем: {config['TIMEOUT_BETWEEN_STARTS']} секунд")
+            tg_info(f"Скраппинг завершен успешно, ожидаем: {config['TIMEOUT_BETWEEN_STARTS']} секунд")
             tm.sleep(config['TIMEOUT_BETWEEN_STARTS'])
     except Exception as ex:
         error("Во время работы Скраппера произошла ошибка",ex)
+        tg_error("Во время работы Скраппера произошла ошибка", ex)

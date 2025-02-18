@@ -9,6 +9,7 @@ from flask_cors import CORS
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from resume_generator import get_resume
+from telegram_notifications import tg_error, tg_info
 
 
 def load_config(file_name):
@@ -280,6 +281,8 @@ if __name__ == "__main__":
                 msg = f"Во время проверки БД, произошла ошибка. Пока не запускаем UI и ждем: {timeout} секунд"
                 warning(msg, e)
                 time.sleep(timeout)
+        tg_info("Запускаем UI")
         app.run(debug=True, host='0.0.0.0', port=5001)
     except Exception as ex:
         error(f"Во время работы приложения с UI произошла ошибка", ex)
+        tg_error(f"Во время работы приложения с UI произошла ошибка", ex)

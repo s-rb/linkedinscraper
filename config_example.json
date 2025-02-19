@@ -6,8 +6,8 @@
   "headers": {
   },
 
-  "LLM_API_KEY": "AITW-e-n3dk",
-  "LLM_MODEL": "gemini-2.0-flash-exp",
+  "GEMINI_API_KEY": "AITW-e-n3dk",
+  "GEMINI_MODEL": "gemini-2.0-flash-exp",
   "MISTRAL_API_KEY": "MISTRAL_API_KEY",
   "MISTRAL_MODEL": "mistral-large-latest",
   "TELEGRAM_BOT_TOKEN": "TELEGRAM_BOT_TOKEN",
@@ -25,7 +25,7 @@
   "title_exclude": ["frontend", "fron end", "game"],
   "title_include": ["python", "developer", "backend", "BE", "engineer"],
   "company_exclude": ["ClickJobs.io"],
-  "languages": ["en", "ru", "uk", "gb", "us"],
+  "languages": ["en", "ru", "uk", "gb", "us", "rus"],
   "timespan": "r84600",
   "jobs_tablename": "jobs",
   "filtered_jobs_tablename": "filtered_jobs",

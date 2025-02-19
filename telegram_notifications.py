@@ -29,6 +29,13 @@ def tg_info(message):
     except Exception as ex:
         print(f"Произошла ошибка при отправке в Телеграм сообщения: {message}", ex)
 
+def tg_error(message):
+    try:
+        error_message = f"❌ Ошибка: {message}"
+        send_message(error_message)
+    except Exception as ex:
+        print(f"Произошла ошибка при отправке в Телеграм сообщения: {message}", ex)
+
 def tg_error(message, exception):
     try:
         error_message = f"❌ Ошибка: {message}\n`{str(exception)}`"

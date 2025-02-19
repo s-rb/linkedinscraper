@@ -61,10 +61,10 @@ def check_proxy(proxy, ip1):
 def test_and_remove_proxies(file_path):
     # Make the first API call without using the proxy
     try:
-        response1 = requests.get(url, headers={**config['headers'], "User-Agent": ua.random}, timeout=5)
+        response1 = requests.get(url, headers={**config['headers'], "User-Agent": ua.random}, timeout=10)
         response1.raise_for_status()
 
-        response1 = requests.get(urlIp, headers={**config['headers'], "User-Agent": ua.random}, timeout=5)
+        response1 = requests.get(urlIp, headers={**config['headers'], "User-Agent": ua.random}, timeout=10)
         response1.raise_for_status()
         ip1 = response1.json()['ip']
     except requests.exceptions.RequestException as e:

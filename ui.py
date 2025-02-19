@@ -24,10 +24,10 @@ app = Flask(__name__)
 CORS(app)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 
-llm_api_key = config['LLM_API_KEY']
-llm_model = config['LLM_MODEL']
+GEMINI_API_KEY = config['GEMINI_API_KEY']
+GEMINI_MODEL = config['GEMINI_MODEL']
 
-chat = ChatGoogleGenerativeAI(api_key=llm_api_key, model=llm_model)
+chat = ChatGoogleGenerativeAI(api_key=GEMINI_API_KEY, model=GEMINI_MODEL)
 
 resume = get_resume()
 
@@ -158,7 +158,7 @@ def get_resume(job_id):
         job = dict(zip(column_names, job_tuple))
 
     # Check if GEMINI_API_KEY is empty
-    if not llm_api_key:
+    if not GEMINI_API_KEY:
         print("Error: LLM API KEY is empty.")
         return jsonify({"error": "LLM API KEY is empty."}), 400
 
@@ -215,7 +215,7 @@ def get_CoverLetter(job_id):
         return jsonify({"error": "Resume not found or couldn't be read."}), 400
 
     # Check if OpenAI API key is empty
-    if not llm_api_key:
+    if not GEMINI_API_KEY:
         print("Error: GEMINI_API_KEY key is empty.")
         return jsonify({"error": "GEMINI_API_KEY is empty."}), 400
 

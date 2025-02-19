@@ -22,6 +22,7 @@ import os
 from resume_generator import get_resume
 from telegram_notifications import tg_info, tg_error
 
+AI_CALL_TIMEOUT_MS = 2500
 MISTRAL = "mistral"
 GEMINI = "gemini"
 NOT_FIND_JOB_DESCRIPTION = "Could not find Job Description"
@@ -39,9 +40,10 @@ def load_config(file_name):
 
 proxy_list = load_config('proxies.json')
 config = load_config('config.json')
+TIMEOUT_BETWEEN_STARTS = config['TIMEOUT_BETWEEN_STARTS']
 
-gemini_model = config["LLM_MODEL"]
-gemini_api_key = config["LLM_API_KEY"]  # Get API key from environment
+gemini_model = config["GEMINI_MODEL"]
+gemini_api_key = config["GEMINI_API_KEY"]  # Get API key from environment
 mistral_api_key=config["MISTRAL_API_KEY"]
 mistral_model=config["MISTRAL_MODEL"]
 
@@ -325,7 +327,6 @@ def filter_jobs_ai(joblist):
     for job in joblist:
         use_gemini = count % 2 != 0
         ai_name = GEMINI if use_gemini else MISTRAL
-        print(f"- {count} of {len(joblist)} {ai_name}: checking if ai matches the job")
         count += 1
         if is_job_fits_resume(f"{job['title']}\n{job['job_description']}", use_gemini):
             llms_stats[ai_name][found] += 1
@@ -464,17 +465,12 @@ def get_jobcards():
             is_remote = query['f_WT'] == "2"
             for i in range(0, config['pages_to_scrape']):
                 url = f"http://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={keywords}&location={location}&f_TPR=&f_WT={query['f_WT']}&geoId=&f_TPR={config['timespan']}&start={25*i}"
-                soup = get_with_retry(url)
-                jobs = []
 
-                try:
-                    transformed = transform(soup)
-                    for job in transformed:
-                        job = {**job, "is_remote": is_remote}
-                        jobs.append(job)
-                except Exception as e:
-                    error(f"Произошла ошибка во время обработки URL: {url}", e, stack_info=True)
-                    if i == 0: tg_error(f"Произошла ошибка во время обработки URL: {url}", e)
+                jobs = get_jobs_for_url(i, is_remote, url)
+
+                if i == 0 and len(jobs) == 0:
+                    tm.sleep(60) # wait and retry
+                    jobs = get_jobs_for_url(i, is_remote, url)
 
                 all_jobs = all_jobs + jobs
                 print("Finished scraping page: ", url)
@@ -483,7 +479,7 @@ def get_jobcards():
                     msg = f"Не удалось найти вакансии для ключевых слов:\n- keywords: {keywords},\n- location: {location},\n- final url: {url}"
                     print(msg)
                     tg_error(msg)
-                
+
                 # Pause between requests
                 tm.sleep(LINKED_ID_TIMEOUT_MS / 1000)  # Convert milliseconds to seconds
 
@@ -491,6 +487,21 @@ def get_jobcards():
     all_jobs = remove_duplicates(all_jobs)
     print("=> Total job cards after removing duplicates: ", len(all_jobs))
     return all_jobs
+
+
+def get_jobs_for_url(i, is_remote, url):
+    soup = get_with_retry(url)
+    jobs = []
+    try:
+        transformed = transform(soup)
+        for job in transformed:
+            job = {**job, "is_remote": is_remote}
+            jobs.append(job)
+    except Exception as e:
+        error(f"Произошла ошибка во время обработки URL: {url}", e, stack_info=True)
+        if i == 0: tg_error(f"Произошла ошибка во время обработки URL: {url}", e)
+    return jobs
+
 
 def find_new_jobs(all_jobs, conn):
     # From all_jobs, find the jobs that are not already in the database. Function checks both the jobs and filtered_jobs tables.
@@ -522,7 +533,7 @@ def is_job_fits_resume(job_description, use_gemini=True):
         bool: True if the job is suitable, False otherwise.
     """
     if not gemini_api_key:
-        print("Error: LLM_API_KEY is empty.")
+        print("Error: GEMINI_API_KEY is empty.")
         return False
 
     user_prompt = (f"Job Description: {job_description}\n\n"
@@ -550,14 +561,17 @@ def is_job_fits_resume(job_description, use_gemini=True):
 
 def call_llm_boolean(messages, use_gemini):
     try:
+        ai_name = GEMINI if use_gemini else MISTRAL
+        print(f"-- {ai_name}: checking the job")
         completion = call_chat(messages) if use_gemini else call_mistral(messages)
         response = completion.content.strip().lower()
         return response == 'true'
     except ResourceExhausted as ex:
         print(f"Retryable error when calling AI: {ex}")
-        tm.sleep(20)
         try:
-            completion = call_chat(messages) if use_gemini else call_mistral(messages)
+            ai_name = GEMINI if not use_gemini else MISTRAL
+            print(f"-- {ai_name}: checking the job")
+            completion = call_chat(messages) if not use_gemini else call_mistral(messages)
             response = completion.content.strip().lower()
             return response == 'true'
         except Exception as ex:
@@ -567,12 +581,12 @@ def call_llm_boolean(messages, use_gemini):
         print(f"Error connecting to AI: {e}")
         return False
     finally:
-        tm.sleep(2500 / 1000)  # 15/2 requests per minute
+        tm.sleep(AI_CALL_TIMEOUT_MS / 1000)  # 15/2 requests per minute
 
 
 def is_job_fits_conditions(job_description, use_gemini=True):
     if not gemini_api_key:
-        print("Error: LLM_API_KEY is empty.")
+        print("Error: GEMINI_API_KEY is empty.")
         return False
 
     user_prompt = (f"Job Description: {job_description}\n\n"
@@ -742,15 +756,17 @@ def save_url_to_absents_file(url):
 
 if __name__ == "__main__":
     counter = 1
-    try:
-        while True:
-            tg_info(f"Начинаем цикл скраппинга: {counter}")
-            print(f"Начинаем цикл скраппинга: {counter}")
+    while True:
+        tg_info(f"Начинаем цикл скраппинга: {counter}")
+        print(f"Начинаем цикл скраппинга: {counter}")
+
+        try:
             main()
-            counter += 1
-            print(f"Скраппинг завершен успешно, ожидаем: {config['TIMEOUT_BETWEEN_STARTS']} секунд")
-            tg_info(f"Скраппинг завершен успешно, ожидаем: {config['TIMEOUT_BETWEEN_STARTS']} секунд")
-            tm.sleep(config['TIMEOUT_BETWEEN_STARTS'])
-    except Exception as ex:
-        error("Во время работы Скраппера произошла ошибка",ex)
-        tg_error("Во время работы Скраппера произошла ошибка", ex)
+        except Exception as ex:
+            error("Во время работы Скраппера произошла ошибка",ex)
+            tg_error("Во время работы Скраппера произошла ошибка", ex)
+
+        counter += 1
+        print(f"Скраппинг завершен успешно, ожидаем: {TIMEOUT_BETWEEN_STARTS} секунд")
+        tg_info(f"Скраппинг завершен успешно, ожидаем: {TIMEOUT_BETWEEN_STARTS} секунд")
+        tm.sleep(TIMEOUT_BETWEEN_STARTS)

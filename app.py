@@ -13,13 +13,11 @@ def run_ui():
 if __name__ == "__main__":
     msg = "Создаем потоки для запуска скраппера и UI"
     tg_info(msg)
-    print(msg)
     # Создаем потоки для запуска каждого файла
     ui_thread = threading.Thread(target=run_ui)
     scrapper_thread = threading.Thread(target=run_scrapper)
 
     msg = "Запускаем потоки"
-    print(msg)
     tg_info(msg)
     # Запускаем потоки
     ui_thread.start()
@@ -29,5 +27,4 @@ if __name__ == "__main__":
     scrapper_thread.join()
     ui_thread.join()
     msg = "Все потоки завершены"
-    print(msg)
     tg_info(msg)

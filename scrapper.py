@@ -628,8 +628,7 @@ def main():
     all_jobs = get_jobcards()
     #filtering out jobs that are already in the database
     all_jobs = find_new_jobs(all_jobs, conn)
-    print ("Total new jobs found after comparing to the database: ", len(all_jobs))
-    tg_info(f"Total new jobs found after comparing to the database: {len(all_jobs)}")
+    tg_info(f"Total new jobs found and will be processed with AI: {len(all_jobs)}")
 
     if len(all_jobs) > 0:
         save_jobs(all_jobs, conn, filtered_jobs_tablename, job_list, jobs_tablename)
@@ -637,12 +636,12 @@ def main():
         print("No jobs found")
     
     end_time = tm.perf_counter()
-    print(f"Scraping finished in {end_time - start_time:.2f} seconds")
     tg_info(f"Scraping finished in {end_time - start_time:.2f} seconds")
 
 
 def save_jobs(all_jobs, conn, filtered_jobs_tablename, job_list, jobs_tablename):
     jobs_to_add = get_jobs_to_add(all_jobs, job_list)
+    jobs_count = len(jobs_to_add)
     df = pd.DataFrame(jobs_to_add)
     df['date_loaded'] = datetime.now()
     df['date_loaded'] = df['date_loaded'].astype(str)
@@ -650,6 +649,7 @@ def save_jobs(all_jobs, conn, filtered_jobs_tablename, job_list, jobs_tablename)
     df.to_csv(TEMP_LINKEDIN_JOBS_CSV, index=False, encoding='utf-8')
 
     process_temp_csv_jobs(conn, filtered_jobs_tablename, jobs_tablename)
+    tg_info(f"Всего добавляем {jobs_count} новых вакансий")
 
 
 def process_temp_csv_jobs(conn, filtered_jobs_tablename, jobs_tablename):
@@ -758,7 +758,6 @@ if __name__ == "__main__":
     counter = 1
     while True:
         tg_info(f"Начинаем цикл скраппинга: {counter}")
-        print(f"Начинаем цикл скраппинга: {counter}")
 
         try:
             main()
@@ -767,6 +766,5 @@ if __name__ == "__main__":
             tg_error("Во время работы Скраппера произошла ошибка", ex)
 
         counter += 1
-        print(f"Скраппинг завершен успешно, ожидаем: {TIMEOUT_BETWEEN_STARTS} секунд")
         tg_info(f"Скраппинг завершен успешно, ожидаем: {TIMEOUT_BETWEEN_STARTS} секунд")
         tm.sleep(TIMEOUT_BETWEEN_STARTS)

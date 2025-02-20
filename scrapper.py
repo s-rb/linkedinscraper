@@ -701,6 +701,7 @@ def get_jobs_to_add(all_jobs, job_list):
             print('Job description language not supported: ', language)
             print(job)
             continue
+        job['language'] = language
         job_list.append(job)
         tm.sleep(LINKED_ID_TIMEOUT_MS / 1000)
     # Final check - removing jobs based on job description keywords words from the config file

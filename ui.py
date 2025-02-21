@@ -41,10 +41,31 @@ def job(job_id):
     jobs = read_jobs_from_db()
     return render_template('./templates/job_description.html', job=jobs[job_id])
 
+# @app.route('/filter_jobs', methods=['GET'])
+# def filter_jobs():
+#     remote_filter = request.args.get('remote', default='all', type=str)
+
+#     if remote_filter == 'true':
+#         remote_filter_value = True
+#     elif remote_filter == 'false':
+#         remote_filter_value = False
+#     else:
+#         remote_filter_value = None
+
+#     res = []
+#     jobs = read_jobs_from_db()
+#     for j in jobs:
+#         if remote_filter_value is None or j['is_remote'] == remote_filter_value:
+#             res.append(j)
+
+#     return render_template('jobs.html', jobs=res, remote_filter_value=remote_filter)
+
 @app.route('/filter_jobs', methods=['GET'])
 def filter_jobs():
     remote_filter = request.args.get('remote', default='all', type=str)
+    language_filter = request.args.get('language', default='all', type=str)
 
+    # Existing remote filter logic
     if remote_filter == 'true':
         remote_filter_value = True
     elif remote_filter == 'false':
@@ -55,10 +76,11 @@ def filter_jobs():
     res = []
     jobs = read_jobs_from_db()
     for j in jobs:
-        if remote_filter_value is None or j['is_remote'] == remote_filter_value:
+        if (remote_filter_value is None or j['is_remote'] == remote_filter_value) and \
+           (language_filter == 'all' or j['language'] == language_filter):
             res.append(j)
 
-    return render_template('jobs.html', jobs=res, remote_filter_value=remote_filter)
+    return render_template('jobs.html', jobs=res, remote_filter_value=remote_filter, job_count=len(res))
 
 @app.route('/get_all_jobs')
 def get_all_jobs():
@@ -240,6 +262,15 @@ def get_CoverLetter(job_id):
     conn.commit()
     conn.close()
     return jsonify({"cover_letter": response}), 200
+
+@app.route('/get_languages')
+def get_languages():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT language FROM jobs WHERE hidden = 0")
+    languages = [row[0] for row in cursor.fetchall()]
+    conn.close()
+    return jsonify(languages)
 
 def read_jobs_from_db():
     conn = sqlite3.connect(DB_PATH)

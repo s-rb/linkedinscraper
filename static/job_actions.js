@@ -21,9 +21,22 @@ async function showJobDetails(jobId) {
     }
 }
 
+async function fetchLanguages() {
+    const response = await fetch('/get_languages');
+    const languages = await response.json();
+    populateLanguageFilter(languages);
+}
 
-
-
+function populateLanguageFilter(languages) {
+    const languageFilter = document.getElementById('language-filter');
+    languageFilter.innerHTML = '<option value="all">Все языки</option>'; // Default option
+    languages.forEach(language => {
+        const option = document.createElement('option');
+        option.value = language;
+        option.textContent = language;
+        languageFilter.appendChild(option);
+    });
+}
 
 function updateCoverLetter(coverLetter) {
     var coverLetterPane = document.getElementById('cover-letter-pane');
@@ -37,8 +50,6 @@ function updateCoverLetter(coverLetter) {
         }
     }
 }
-
-
 
 function updateJobDetails(job) {
     var jobDetailsDiv = document.getElementById('job-details');
@@ -66,7 +77,6 @@ function updateJobDetails(job) {
         coverLetterDiv.innerHTML = '';
     }
 }
-
 
 function markAsApplied(jobId) {
     console.log('Marking job as applied: ' + jobId)
@@ -138,7 +148,6 @@ function hideJob(jobId) {
         });
 }
 
-
 function markAsInterview(jobId) {
     console.log('Marking job as interview: ' + jobId)
     fetch('/mark_interview/' + jobId, { method: 'POST' })
@@ -175,3 +184,12 @@ function stopDrag() {
     document.removeEventListener('mousemove', drag);
     document.removeEventListener('mouseup', stopDrag);
 }
+
+function filterJobs() {
+    const remoteFilterValue = document.getElementById('remote-filter').value;
+    const languageFilterValue = document.getElementById('language-filter').value;
+    window.location.href = '/filter_jobs?remote=' + remoteFilterValue + '&language=' + languageFilterValue;
+}
+
+// Call fetchLanguages on page load
+document.addEventListener('DOMContentLoaded', fetchLanguages);

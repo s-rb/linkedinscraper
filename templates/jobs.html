@@ -138,6 +138,14 @@
                         <option value="false" {% if remote_filter_value == 'false' %}selected{% endif %}>On-site</option>
                     </select>
                 </div>
+                <div>
+                    <label for="language-filter">Фильтр по языку:</label>
+                    <select id="language-filter" onchange="filterJobs()">
+                        <option value="all">Все языки</option>
+                        <!-- Options will be populated by JavaScript -->
+                    </select>
+                </div>
+                <div id="job-count">Найдено {{ job_count }} работ</div>
                 
                 {% for job in jobs %}
                 <a class="{% if job.rejected == 1 %}job-item job-item-rejected{% elif job.interview == 1 %}job-item job-item-interview{% elif job.applied == 1 %}job-item job-item-applied{% else %}job-item{% endif %}"  href="#" onclick="event.preventDefault(); showJobDetails('{{ job.id }}')" data-job-id="{{ job.id }}">

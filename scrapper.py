@@ -10,6 +10,7 @@ from itertools import groupby
 from datetime import datetime, timedelta, time
 import pandas as pd
 from urllib.parse import quote
+import re
 
 from google.api_core.exceptions import ResourceExhausted
 from langdetect import detect
@@ -42,20 +43,28 @@ proxy_list = load_config('proxies.json')
 config = load_config('config.json')
 TIMEOUT_BETWEEN_STARTS = config['TIMEOUT_BETWEEN_STARTS']
 
-gemini_model = config["GEMINI_MODEL"]
+flash_2_gemini_model = 'gemini-2.0-flash'
+default_gemini_model = config["GEMINI_MODEL"]
+gemini_model = default_gemini_model
 gemini_api_key = config["GEMINI_API_KEY"]  # Get API key from environment
 mistral_api_key=config["MISTRAL_API_KEY"]
 mistral_model=config["MISTRAL_MODEL"]
 
 LINKED_ID_TIMEOUT_MS = config['request_pause']
 
-gemini = ChatGoogleGenerativeAI(
-    api_key=gemini_api_key,
-    model=gemini_model,
-    temperature=0,
-    max_tokens=None,
-    timeout=10.0,
-    max_retries=2)  # Initialize with the new API key
+
+def get_gemini_chat(gemini_modl):
+    return ChatGoogleGenerativeAI(
+        api_key=gemini_api_key,
+        model=gemini_modl,
+        temperature=0,
+        max_tokens=None,
+        timeout=10.0,
+        max_retries=2)
+
+
+gemini = get_gemini_chat(default_gemini_model)  # Initialize with the new API key
+gemini_counter = 1500
 
 
 mistral = ChatMistralAI(
@@ -560,9 +569,10 @@ def is_job_fits_resume(job_description, use_gemini=True):
 
 
 def call_llm_boolean(messages, use_gemini):
+    tokens = count_tokens(" ".join(value for _, value in messages))
     try:
         ai_name = GEMINI if use_gemini else MISTRAL
-        print(f"-- {ai_name}: checking the job")
+        print(f"-- {ai_name}: checking the job, tokens: {tokens}")
         completion = call_chat(messages) if use_gemini else call_mistral(messages)
         response = completion.content.strip().lower()
         return response == 'true'
@@ -570,7 +580,7 @@ def call_llm_boolean(messages, use_gemini):
         print(f"Retryable error when calling AI: {ex}")
         try:
             ai_name = GEMINI if not use_gemini else MISTRAL
-            print(f"-- {ai_name}: checking the job")
+            print(f"-- {ai_name}: checking the job, tokens: {tokens}")
             completion = call_chat(messages) if not use_gemini else call_mistral(messages)
             response = completion.content.strip().lower()
             return response == 'true'
@@ -606,8 +616,16 @@ def is_job_fits_conditions(job_description, use_gemini=True):
 
 
 def call_chat(messages):
+    if gemini_counter < 1:
+        gemini_counter = 1500
+        current_gemini_model = gemini.model
+        new_gemini_model = flash_2_gemini_model if current_gemini_model == default_gemini_model else default_gemini_model
+        gemini = get_gemini_chat(new_gemini_model)
+    else: gemini_counter -= 1
+
     completion = gemini.invoke(messages)
     return completion
+
 
 def call_mistral(messages):
     completion = mistral.invoke(messages)
@@ -694,7 +712,7 @@ def get_jobs_to_add(all_jobs, job_list):
         # if job is older than days_to_scrape, skip it
         if job_date < datetime.now() - timedelta(days=config['days_to_scrape']):
             continue
-        print('Found new job: ', job['title'], 'at ', job['company'], job['job_url'])
+        print('Before filter - found new job: ', job['title'], 'at ', job['company'], job['job_url'])
         job['job_description'] = get_job_description(job['job_url'])
         language = safe_detect(job['job_description'])
         if language not in config['languages']:
@@ -754,6 +772,10 @@ def save_url_to_absents_file(url):
     except Exception as e:
         error(f"Ошибка при работе с absent_description_urls.json: {e}")
 
+def count_tokens(text):
+    # Используем регулярное выражение для нахождения всех слов
+    tokens = re.findall(r'\b\w+\b', text)  # Находим все слова
+    return len(tokens)  # Возвращаем количество токенов
 
 if __name__ == "__main__":
     counter = 1

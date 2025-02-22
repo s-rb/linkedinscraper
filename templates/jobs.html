@@ -176,8 +176,9 @@
         <script src="/static/job_actions.js"></script>
         <script>
         function filterJobs() {
-            const filterValue = document.getElementById('remote-filter').value;
-            window.location.href = '/filter_jobs?remote=' + filterValue;
+            const remoteFilterValue = document.getElementById('remote-filter').value;
+            const languageFilterValue = document.getElementById('language-filter').value;
+            window.location.href = '/filter_jobs?remote=' + remoteFilterValue + '&language=' + languageFilterValue;
         }
         </script>
     </body>

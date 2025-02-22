@@ -185,11 +185,5 @@ function stopDrag() {
     document.removeEventListener('mouseup', stopDrag);
 }
 
-function filterJobs() {
-    const remoteFilterValue = document.getElementById('remote-filter').value;
-    const languageFilterValue = document.getElementById('language-filter').value;
-    window.location.href = '/filter_jobs?remote=' + remoteFilterValue + '&language=' + languageFilterValue;
-}
-
 // Call fetchLanguages on page load
 document.addEventListener('DOMContentLoaded', fetchLanguages);

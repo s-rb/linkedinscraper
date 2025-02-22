@@ -1,4 +1,4 @@
-source /app/venv/bin/activate
+source ./venv/bin/activate
 cp proxies.json proxies.json.backup_$(date +%Y-%m-%dT%H:%M:%S)
 python3 -u test_and_remove_proxies.py
 #if [ $? -ne 0 ]; then
@@ -18,4 +18,4 @@ else
     cp default_cv_data.yml default_cv_data.yml
 fi
 
-python3 -u app.py
+python -u app.py

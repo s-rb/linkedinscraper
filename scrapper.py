@@ -616,12 +616,15 @@ def is_job_fits_conditions(job_description, use_gemini=True):
 
 
 def call_chat(messages):
+    global gemini_counter  # Declare gemini_counter as global
+    global gemini  # Declare gemini as global
     if gemini_counter < 1:
         gemini_counter = 1500
         current_gemini_model = gemini.model
         new_gemini_model = flash_2_gemini_model if current_gemini_model == default_gemini_model else default_gemini_model
         gemini = get_gemini_chat(new_gemini_model)
-    else: gemini_counter -= 1
+    else: 
+        gemini_counter -= 1
 
     completion = gemini.invoke(messages)
     return completion
@@ -712,7 +715,7 @@ def get_jobs_to_add(all_jobs, job_list):
         # if job is older than days_to_scrape, skip it
         if job_date < datetime.now() - timedelta(days=config['days_to_scrape']):
             continue
-        print('Before filter - found new job: ', job['title'], 'at ', job['company'], job['job_url'])
+        print('processing job: ', job['title'], 'at ', job['company'], job['job_url'])
         job['job_description'] = get_job_description(job['job_url'])
         language = safe_detect(job['job_description'])
         if language not in config['languages']:

@@ -1,5 +1,8 @@
 .venv
 .idea
+__pycache__
 venv
+.gitignore
 config_example.json
+linkedin-tips.md
 *.sh.backup

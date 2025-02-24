@@ -41,24 +41,6 @@ def job(job_id):
     jobs = read_jobs_from_db()
     return render_template('./templates/job_description.html', job=jobs[job_id])
 
-# @app.route('/filter_jobs', methods=['GET'])
-# def filter_jobs():
-#     remote_filter = request.args.get('remote', default='all', type=str)
-
-#     if remote_filter == 'true':
-#         remote_filter_value = True
-#     elif remote_filter == 'false':
-#         remote_filter_value = False
-#     else:
-#         remote_filter_value = None
-
-#     res = []
-#     jobs = read_jobs_from_db()
-#     for j in jobs:
-#         if remote_filter_value is None or j['is_remote'] == remote_filter_value:
-#             res.append(j)
-
-#     return render_template('jobs.html', jobs=res, remote_filter_value=remote_filter)
 
 @app.route('/filter_jobs', methods=['GET'])
 def filter_jobs():
@@ -276,9 +258,9 @@ def read_jobs_from_db():
     conn = sqlite3.connect(DB_PATH)
     query = "SELECT * FROM jobs WHERE hidden = 0"
     df = pd.read_sql_query(query, conn)
-    df = df.sort_values(by='id', ascending=False)
+    df = df.sort_values(by=['score', 'id'], ascending=False)  # Сортировка по полю score и id в убывающем порядке
     # df.reset_index(drop=True, inplace=True)
-    return df.to_dict('records')
+    return df.to_dict('records')  # Ensure score and score_comments are included
 
 def verify_db_schema():
     conn = sqlite3.connect(DB_PATH)
@@ -298,6 +280,20 @@ def verify_db_schema():
         # If it doesn't exist, add it
         cursor.execute("ALTER TABLE jobs ADD COLUMN resume TEXT")
         print("Added resume column to jobs table")
+
+    if "score" not in [column[1] for column in table_info]:
+        # If it doesn't exist, add it
+        cursor.execute("ALTER TABLE jobs ADD COLUMN score REAL DEFAULT 0.70")  # Add column with default value
+        print("Added 'score' column to jobs table with default value 0.70")        
+    
+    # If it exists, update records that have NULL score to 0.70
+    cursor.execute("UPDATE jobs SET score = 0.70 WHERE score IS NULL")
+    print("Updated existing records with NULL score to default value 0.70")
+
+    if "score_comments" not in [column[1] for column in table_info]:
+        # If it doesn't exist, add it
+        cursor.execute("ALTER TABLE jobs ADD COLUMN score_comments TEXT")
+        print("Added 'score_comments' column to jobs table")
 
     conn.close()
 

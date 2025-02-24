@@ -66,7 +66,17 @@ function updateJobDetails(job) {
     html += '</div>';
     html += '<p class="job-detail">' + job.company + ', ' + job.location + '</p>';
     html += '<p class="job-detail">' + job.date + '</p>';
-    html += '<p class="job-description">' + job.job_description + '</p>';
+    
+    // Check if job_description_html is present and not empty
+    if (job.job_description_html && job.job_description_html.trim() !== '') {
+        html += job.job_description_html; // Use job_description_html as inner HTML
+    } else {
+        html += '<p class="job-description">' + job.job_description + '</p>'; // Fallback to job_description
+    }
+    
+    html += '<br>';
+    html += '<h3>AI Score comments</h3>';
+    html += '<div>' + job.score_comments + '</div></p>';
 
     jobDetailsDiv.innerHTML = html;
     if (job.cover_letter) {

@@ -223,7 +223,7 @@ def prepare_description_html(html_content):
 
 def prepare_description(html_content):
     # Удаляем ненужные теги, если необходимо
-    for script in html_content(["script", "style"]):  # Удаляем скрипты и стили
+    for script in html_content(["script", "style", "button"]):  # Удаляем скрипты и стили
         script.decompose()
 
     # Обрабатываем текст, сохраняя форматирование
@@ -291,7 +291,7 @@ def process_list_items(html_content):
 
 def prepare_description2(soup):
     # Удаляем ненужные теги, если необходимо
-    for script in soup(["script", "style"]):  # Удаляем скрипты и стили
+    for script in soup(["script", "style", "button"]):  # Удаляем скрипты и стили
         script.decompose()
 
     # Обрабатываем текст, сохраняя форматирование
@@ -318,7 +318,7 @@ def prepare_description2(soup):
 
 def prepare_description3(html_content):
     # Удаляем ненужные теги, если необходимо
-    for script in html_content(["script", "style"]):  # Удаляем скрипты и стили
+    for script in html_content(["script", "style", "button"]):  # Удаляем скрипты и стили
         script.decompose()
 
     # Обрабатываем текст, сохраняя форматирование
@@ -358,7 +358,7 @@ def extract_html(soup):
 
 def prepare_desc_html(html_content):
     # Удаляем ненужные теги, если необходимо
-    for script in html_content(["script", "style"]):  # Удаляем скрипты и стили
+    for script in html_content(["script", "style", "button"]):  # Удаляем скрипты и стили
         script.decompose()
     return html_content
 
@@ -400,10 +400,19 @@ def filter_jobs_ai(joblist):
         use_gemini = count % 2 != 0
         ai_name = GEMINI if use_gemini else MISTRAL
         count += 1
-        if is_job_fits_resume(f"{job['title']}\n{job['job_description']}", use_gemini):
-            llms_stats[ai_name][found] += 1
-            new_joblist.append(job)
-        else: llms_stats[ai_name][rejected] += 1
+        try:
+            ai_resp_json = is_job_fits_resume(f"{job['title']}\n{job['job_description']}", use_gemini)
+            score = ai_resp_json.get("score")
+            if score is not None and score > 0.0:
+                llms_stats[ai_name][found] += 1
+                job['score'] = score
+                job['score_comments'] = ai_resp_json.get("score_comments", "")
+                new_joblist.append(job)
+            else: llms_stats[ai_name][rejected] += 1
+        except (json.JSONDecodeError, TypeError):
+            print("Error decoding JSON response.")
+            llms_stats[ai_name][rejected] += 1
+
     print(f"AI statistics: {llms_stats}")
     return new_joblist
 
@@ -602,11 +611,11 @@ def is_job_fits_resume(job_description, use_gemini=True):
         resume (str): The resume text.
 
     Returns:
-        bool: True if the job is suitable, False otherwise.
+        str: True if the job is suitable, False otherwise.
     """
     if not gemini_api_key:
         print("Error: GEMINI_API_KEY is empty.")
-        return False
+        return get_default_ai_response("Error: GEMINI_API_KEY is empty.")
 
     user_prompt = (f"Job Description: {job_description}\n\n"
                    f"Resume: {resume}")
@@ -614,7 +623,10 @@ def is_job_fits_resume(job_description, use_gemini=True):
         ("system",
             f"You are a career coach with over 15 years of experience helping job seekers land their dream jobs in tech. "
             f"Based on the following job description and resume, "
-            f"please respond with only 'true' if the job is suitable for me based on the resume, or 'false' otherwise. "
+            f"please respond only in JSON format as follows: "
+            f'{{"score": <value>, "score_comments": "<comments>"}}. '
+            f"Where score is a float value between 0.00 and 1.00 indicating how well the job matches the resume and other my constraints, "
+            f"and score_comments provides brief reasons for the score. "
             f"Keep in mind that the main programming language is critical, but other technologies are secondary. "
             f"Even if I don't have them in my resume, I could know them anyway. "
             f"Also, if my work experience is not enough, but there is a chance that I could be hired based on your experience of hiring, "
@@ -628,7 +640,46 @@ def is_job_fits_resume(job_description, use_gemini=True):
         ("human", user_prompt)
     ]
 
-    return call_llm_boolean(messages, use_gemini)
+    return call_llm_json(messages, use_gemini)
+
+
+def call_llm_json(messages, use_gemini):
+    tokens = count_tokens(" ".join(value for _, value in messages))
+    try:
+        ai_name = GEMINI if use_gemini else MISTRAL
+        print(f"-- {ai_name}: checking the job, tokens: {tokens}")
+        completion = call_chat(messages) if use_gemini else call_mistral(messages)
+        return extract_json(completion)
+    except ResourceExhausted as ex:
+        print(f"Retryable error when calling AI: {ex}")
+        try:
+            ai_name = GEMINI if not use_gemini else MISTRAL
+            print(f"-- {ai_name}: checking the job, tokens: {tokens}")
+            completion = call_chat(messages) if not use_gemini else call_mistral(messages)
+            return extract_json(completion)
+        except Exception as ex:
+            print(f"Error connecting to AI: {ex}")
+            return get_default_ai_response(str(ex))
+    except Exception as e:
+        print(f"Error connecting to AI: {e}")
+        return get_default_ai_response(str(e))
+    finally:
+        tm.sleep(AI_CALL_TIMEOUT_MS / 1000)  # 15/2 requests per minute
+
+def extract_json(completion):
+    response = completion.content.strip() # Get the raw response content
+    if response.startswith('```') and response.endswith('```'):
+        response = re.sub(r'^.*?\n+', '', response) # Remove starting and any following newline
+        response = re.sub(r'\n.*$', '', response) # Remove ending
+        return json.loads(response) # Parse the JSON response
+    else:
+        return json.loads(response)
+
+def get_default_ai_response(exc):
+    return {
+        "score": 0.00,
+        "score_comments": f"Failure to call AI.\n{exc}"
+    }
 
 
 def call_llm_boolean(messages, use_gemini):
@@ -669,13 +720,16 @@ def is_job_fits_conditions(job_description, use_gemini=True):
     messages = [
         ("system", f"You are a career coach with over 15 years of experience helping job seekers land their dream jobs in tech. "
                    f"Based on the following job description and conditions, "
-                   f"please respond with only 'true' if the the job meets the conditions, or 'false' otherwise."
+                   f"please respond only in JSON format as follows: "
+                   f'{{"score": <value>, "score_comments": "<comments>"}}. '
+                   f"Where score is a float value between 0.00 and 1.00 indicating how well the job matches the conditions, "
+                   f"and score_comments provides brief reasons for the score. "
                    f"Keep in mind that the programming language and the language of the job description are critical conditions."
                    f"Other technologies are not critical"),
         ("human", user_prompt)
     ]
 
-    return call_llm_boolean(messages, use_gemini)
+    return call_llm_json(messages, use_gemini)
 
 
 def call_chat(messages):
@@ -789,7 +843,7 @@ def get_jobs_to_add(all_jobs, job_list):
         else:
             job_desc = get_job_description(description_html)
             job['job_description'] = job_desc
-            if job_desc is None or job_desc is "" or job_desc is NOT_FIND_JOB_DESCRIPTION:
+            if job_desc is None or job_desc == "" or job_desc == NOT_FIND_JOB_DESCRIPTION:
                 save_url_to_absents_file(url)
                 warning(f"Not found job description for url: {url}")
 
@@ -831,7 +885,7 @@ def get_job_description_html(desc_soup, retries=3):
 def get_job_description(div):
     try:
         desc = prepare_description_html(div)
-        if desc is not None and desc is not "" and desc != NOT_FIND_JOB_DESCRIPTION: return desc
+        if desc is not None and desc != "" and desc != NOT_FIND_JOB_DESCRIPTION: return desc
     except Exception as ex:
         error(f"Во время обработки div: {div} произошла ошибка", ex)
     return NOT_FIND_JOB_DESCRIPTION

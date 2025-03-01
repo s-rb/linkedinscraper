@@ -131,13 +131,25 @@
                 <h2>Jobs List</h2>
                 
                 <div>
-                    <label for="remote-filter">Filter by Remote:</label>
+                    <label for="remote-filter">Is remote:</label>
                     <select id="remote-filter" onchange="filterJobs()">
                         <option value="all" {% if remote_filter_value == 'all' %}selected{% endif %}>All</option>
                         <option value="true" {% if remote_filter_value == 'true' %}selected{% endif %}>Remote</option>
                         <option value="false" {% if remote_filter_value == 'false' %}selected{% endif %}>On-site</option>
                     </select>
                 </div>
+
+                <div>
+                    <label for="remote-option-filter">Remote option:</label>
+                    <select id="remote-option-filter" onchange="filterJobs()">
+                        <option value="all" {% if remote_option_filter_value == 'all' %}selected{% endif %}>All</option>
+                        <option value="FULL_REMOTE" {% if remote_option_filter_value == 'FULL_REMOTE' %}selected{% endif %}>FULL_REMOTE</option>
+                        <option value="REMOTE_FROM_COUNTRY" {% if remote_option_filter_value == 'REMOTE_FROM_COUNTRY' %}selected{% endif %}>REMOTE_FROM_COUNTRY</option>
+                        <option value="HYBRID" {% if remote_option_filter_value == 'HYBRID' %}selected{% endif %}>HYBRID</option>
+                        <option value="OFFICE" {% if remote_option_filter_value == 'OFFICE' %}selected{% endif %}>OFFICE</option>
+                    </select>
+                </div>
+
                 <div>
                     <label for="language-filter">Фильтр по языку:</label>
                     <select id="language-filter" onchange="filterJobs()">
@@ -145,14 +157,59 @@
                         <!-- Options will be populated by JavaScript -->
                     </select>
                 </div>
-                <div id="job-count">Найдено {{ job_count }} работ</div>
+
+                <div>
+                    <label for="visa-info-filter">Visa info:</label>
+                    <select id="visa-info-filter" onchange="filterJobs()">
+                        <option value="all" {% if visa_info_filter_value == 'all' %}selected{% endif %}>All</option>
+                        <option value="true" {% if visa_info_filter_value == 'true' %}selected{% endif %}>Has visa</option>
+                        <option value="false" {% if visa_info_filter_value == 'false' %}selected{% endif %}>No visa</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label for="relocation-info-filter">Relocation info:</label>
+                    <select id="relocation-info-filter" onchange="filterJobs()">
+                        <option value="all" {% if relocation_info_filter_value == 'all' %}selected{% endif %}>All</option>
+                        <option value="true" {% if relocation_info_filter_value == 'true' %}selected{% endif %}>Has relocation</option>
+                        <option value="false" {% if relocation_info_filter_value == 'false' %}selected{% endif %}>No relocation</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label for="min-salary-filter">Min salary from:</label>
+                    <input type="number" id="min-salary-filter" onchange="filterJobs()"
+                           placeholder="Введите минимальную зарплату"
+                           value="{% if min_salary_from_filter_value and min_salary_from_filter_value == 'all' %}{% else %}{{min_salary_from_filter_value}}{% endif %}"
+                    >
+                </div>
+
+                <div>
+                    <label for="max-salary-filter">Max salary from:</label>
+                    <input type="number" id="max-salary-filter" onchange="filterJobs()" placeholder="Введите максимальную зарплату"
+                           value="{% if max_salary_from_filter_value and max_salary_from_filter_value == 'all' %}{% else %}{{max_salary_from_filter_value}}{% endif %}"
+                    >
+                </div>
+
+                <div>
+                    <label for="min-score-filter">Score range:</label>
+                    <input type="number" id="min-score-filter" onchange="filterJobs()" placeholder="Min score" min="0" max="1" step="0.01"
+                           value="{% if min_score_filter_value and min_score_filter_value == 'all' %}{% else %}{{min_score_filter_value}}{% endif %}"
+                    >
+                </div>
+
+                <div id="job-count">Found {{ job_count }} jobs</div>
                 
                 {% for job in jobs %}
                 <a class="{% if job.rejected == 1 %}job-item job-item-rejected{% elif job.interview == 1 %}job-item job-item-interview{% elif job.applied == 1 %}job-item job-item-applied{% else %}job-item{% endif %}"  href="#" onclick="event.preventDefault(); showJobDetails('{{ job.id }}')" data-job-id="{{ job.id }}">
                     <div class="job-content">
                         <h3>{{ job.title }}</h3>
                         <p>{{ job.company }}, {{ job.location }}</p>
-                        <p>{{ job.date }} | <strong> {{ job.score }}</strong></p>
+                        <p>{{ job.date }} | <strong> {{ job.score }}</strong>
+                            {% if job.salary_from %}
+                            <br><b>{% if job.salary_from %}{{job.salary_from}}{% else %}0{% endif %} - {% if job.salary_to %}{{job.salary_to}}{% else %}0{% endif %}</b>
+                            {% endif %}
+                        </p>
                     </div>
                 </a>
                 {% endfor %}
@@ -174,13 +231,6 @@
             </div>
         </div>
         <script src="/static/job_actions.js"></script>
-        <script>
-        function filterJobs() {
-            const remoteFilterValue = document.getElementById('remote-filter').value;
-            const languageFilterValue = document.getElementById('language-filter').value;
-            window.location.href = '/filter_jobs?remote=' + remoteFilterValue + '&language=' + languageFilterValue;
-        }
-        </script>
     </body>
     
 </html>

@@ -195,5 +195,25 @@ function stopDrag() {
     document.removeEventListener('mouseup', stopDrag);
 }
 
+function filterJobs() {
+    const remoteFilterValue = document.getElementById('remote-filter').value;
+    const remoteFilterOptionValue = document.getElementById('remote-option-filter').value;
+    const languageFilterValue = document.getElementById('language-filter').value;
+    const visaInfoFilterValue = document.getElementById('visa-info-filter').value;
+    const relocationInfoFilterValue = document.getElementById('relocation-info-filter').value;
+    const minSalaryValue = document.getElementById('min-salary-filter').value;
+    const maxSalaryValue = document.getElementById('max-salary-filter').value;
+    const minScoreValue = document.getElementById('min-score-filter').value;
+    
+    window.location.href = '/filter_jobs?remote=' + remoteFilterValue
+        + '&language=' + languageFilterValue
+        + '&has_visa_sponsorship_info=' + visaInfoFilterValue
+        + '&has_relocation_info=' + relocationInfoFilterValue
+        + '&remote_option=' + remoteFilterOptionValue
+        + '&min_salary_from=' + minSalaryValue
+        + '&max_salary_from=' + maxSalaryValue
+        + '&min_score=' + minScoreValue;
+}
+
 // Call fetchLanguages on page load
 document.addEventListener('DOMContentLoaded', fetchLanguages);

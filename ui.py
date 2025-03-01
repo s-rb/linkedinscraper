@@ -9,6 +9,7 @@ from flask_cors import CORS
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from resume_generator import get_resume
+from scrapper import salary_from, score, salary_to, visa_sponsorship, relocation, remote, NO_SPONSORSHIP, NO_RELOCATION
 from telegram_notifications import tg_error, tg_info
 
 
@@ -46,23 +47,37 @@ def job(job_id):
 def filter_jobs():
     remote_filter = request.args.get('remote', default='all', type=str)
     language_filter = request.args.get('language', default='all', type=str)
+    remote_option_filter = request.args.get('remote_option', default='all', type=str)
+    has_visa_sponsorship_info_filter = request.args.get('has_visa_sponsorship_info', default='all', type=str)
+    has_relocation_info_filter = request.args.get('has_relocation_info', default='all', type=str)
+    min_salary_from_filter = request.args.get('min_salary_from', default='all', type=str)
+    max_salary_from_filter = request.args.get('max_salary_from', default='all', type=str)
+    min_score_filter = request.args.get('min_score', default='all', type=str)
 
-    # Existing remote filter logic
-    if remote_filter == 'true':
-        remote_filter_value = True
-    elif remote_filter == 'false':
-        remote_filter_value = False
-    else:
-        remote_filter_value = None
+    filters = []
+    if remote_filter == 'true' or remote_filter == 'false': filters.append(f"is_remote IS {remote_filter}")
+    if language_filter != 'all': filters.append(f"language IS {language_filter}")
+    if has_visa_sponsorship_info_filter != 'all': filters.append(f"{visa_sponsorship} IS NOT {NO_SPONSORSHIP}")
+    if has_relocation_info_filter != 'all': filters.append(f"{relocation} IS NOT {NO_RELOCATION}")
+    if remote_option_filter != 'all': filters.append(f"{remote} IS {remote_option_filter}")
+    if len(min_salary_from_filter) > 0 and min_salary_from_filter != 'all': filters.append(f"{salary_from} >= {min_salary_from_filter}")
+    if len(max_salary_from_filter) > 0 and max_salary_from_filter != 'all': filters.append(f"{salary_to} >= {max_salary_from_filter}")
+    if len(min_score_filter) > 0 and min_score_filter != 'all': filters.append(f"score >= {min_score_filter}")
 
-    res = []
-    jobs = read_jobs_from_db()
-    for j in jobs:
-        if (remote_filter_value is None or j['is_remote'] == remote_filter_value) and \
-           (language_filter == 'all' or j['language'] == language_filter):
-            res.append(j)
+    jobs = read_jobs_from_db(filters)
 
-    return render_template('jobs.html', jobs=res, remote_filter_value=remote_filter, job_count=len(res))
+    return render_template(
+        'jobs.html',
+        jobs=jobs,
+        remote_filter_value=remote_filter,
+        remote_option_filter_value=remote_option_filter,
+        visa_info_filter_value=has_visa_sponsorship_info_filter,
+        relocation_info_filter_value=has_relocation_info_filter,
+        min_salary_from_filter_value=min_salary_from_filter,
+        max_salary_from_filter_value=max_salary_from_filter,
+        min_score_filter_value=min_score_filter,
+        job_count=len(jobs)
+    )
 
 @app.route('/get_all_jobs')
 def get_all_jobs():
@@ -254,12 +269,17 @@ def get_languages():
     conn.close()
     return jsonify(languages)
 
-def read_jobs_from_db():
+def read_jobs_from_db(filters=None):
+    if filters is None: filters = []
+
     conn = sqlite3.connect(DB_PATH)
     query = "SELECT * FROM jobs WHERE hidden = 0"
+
+    if len(filters) > 0:
+        query += f" AND {' AND '.join(filters)}"
+
     df = pd.read_sql_query(query, conn)
     df = df.sort_values(by=['score', 'id'], ascending=False)  # Сортировка по полю score и id в убывающем порядке
-    # df.reset_index(drop=True, inplace=True)
     return df.to_dict('records')  # Ensure score and score_comments are included
 
 def verify_db_schema():
@@ -281,11 +301,36 @@ def verify_db_schema():
         cursor.execute("ALTER TABLE jobs ADD COLUMN resume TEXT")
         print("Added resume column to jobs table")
 
-    if "score" not in [column[1] for column in table_info]:
+    if visa_sponsorship not in [column[1] for column in table_info]:
+        # If it doesn't exist, add it
+        cursor.execute(f"ALTER TABLE jobs ADD COLUMN {visa_sponsorship} TEXT")
+        print(f"Added column '{visa_sponsorship}' to jobs table")
+
+    if relocation not in [column[1] for column in table_info]:
+        # If it doesn't exist, add it
+        cursor.execute(f"ALTER TABLE jobs ADD COLUMN {relocation} TEXT")
+        print(f"Added column '{relocation}' to jobs table")
+
+    if remote not in [column[1] for column in table_info]:
+        # If it doesn't exist, add it
+        cursor.execute(f"ALTER TABLE jobs ADD COLUMN {remote} TEXT")
+        print(f"Added column '{remote}' to jobs table")
+
+    if score not in [column[1] for column in table_info]:
         # If it doesn't exist, add it
         cursor.execute("ALTER TABLE jobs ADD COLUMN score REAL DEFAULT 0.70")  # Add column with default value
-        print("Added 'score' column to jobs table with default value 0.70")        
-    
+        print("Added 'score' column to jobs table with default value 0.70")
+
+    if salary_from not in [column[1] for column in table_info]:
+        # If it doesn't exist, add it
+        cursor.execute(f"ALTER TABLE jobs ADD COLUMN {salary_from} INTEGER DEFAULT 0")  # Add column with default value
+        print(f"Added {salary_from} column to jobs table with default value 0")
+
+    if salary_to not in [column[1] for column in table_info]:
+        # If it doesn't exist, add it
+        cursor.execute(f"ALTER TABLE jobs ADD COLUMN {salary_to} INTEGER DEFAULT 0")  # Add column with default value
+        print(f"Added {salary_to} column to jobs table with default value 0")
+
     # If it exists, update records that have NULL score to 0.70
     cursor.execute("UPDATE jobs SET score = 0.70 WHERE score IS NULL")
     print("Updated existing records with NULL score to default value 0.70")

@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# Установите необходимые пакеты и Python 3.11
+# Установим необходимые пакеты
 RUN apt-get update && apt-get install -y \
     curl \
     && apt-get clean \
@@ -11,16 +11,16 @@ COPY requirements.txt /app/requirements.txt
 
 WORKDIR /app
 
-# Создайте виртуальное окружение
+# Создаем виртуальное окружение
 RUN python -m venv venv
 
-# Активируйте виртуальное окружение и установите зависимости
+# Активируем виртуальное окружение и установим зависимости
 RUN ./venv/bin/pip install --upgrade pip && \
     ./venv/bin/pip install -r requirements.txt
 
 COPY . /app
 
-# Установите права на выполнение скриптов
+# Установим права на выполнение скриптов
 RUN chmod +x main.sh
 
 EXPOSE 5001

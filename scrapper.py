@@ -30,6 +30,15 @@ NOT_FIND_JOB_DESCRIPTION = "Could not find Job Description"
 JOBS_FILTERED_CSV = 'linkedin_jobs_filtered.csv'
 LINKEDIN_JOBS_CSV = 'linkedin_jobs.csv'
 TEMP_LINKEDIN_JOBS_CSV = 'temp_linkedin_jobs.csv'
+NO_SPONSORSHIP = 'NO_SPONSORSHIP'
+NO_RELOCATION = 'NO_RELOCATION'
+score = "score"
+score_comments = "score_comments"
+salary_from = "salary_from"
+salary_to = "salary_to"
+visa_sponsorship = "visa_sponsorship"
+relocation = "relocation"
+remote = "remote"
 
 ua = UserAgent(browsers=['Safari', 'Chrome', 'Firefox'], os=["Windows", "Ubuntu", "Mac OS X", "Android", "iOS"])
 
@@ -49,6 +58,10 @@ gemini_model = default_gemini_model
 gemini_api_key = config["GEMINI_API_KEY"]  # Get API key from environment
 mistral_api_key=config["MISTRAL_API_KEY"]
 mistral_model=config["MISTRAL_MODEL"]
+FULL_REMOTE = 'FULL_REMOTE'
+REMOTE_FROM_COUNTRY = 'REMOTE_FROM_COUNTRY'
+HYBRID = 'HYBRID'
+OFFICE = 'OFFICE'
 
 LINKED_ID_TIMEOUT_MS = config['request_pause']
 
@@ -402,15 +415,20 @@ def filter_jobs_ai(joblist):
         count += 1
         try:
             ai_resp_json = is_job_fits_resume(f"{job['title']}\n{job['job_description']}", use_gemini)
-            score = ai_resp_json.get("score")
-            if score is not None and score > 0.0:
+            score_str = ai_resp_json.get("score")
+            if score_str is not None and score_str > 0.0:
                 llms_stats[ai_name][found] += 1
-                job['score'] = score
-                job['score_comments'] = ai_resp_json.get("score_comments", "")
+                job[score] = score_str
+                job[score_comments] = ai_resp_json.get(score_comments, "")
+                job[salary_from] = ai_resp_json.get(salary_from, "")
+                job[salary_to] = ai_resp_json.get(salary_to, "")
+                job[visa_sponsorship] = ai_resp_json.get(visa_sponsorship, "")
+                job[relocation] = ai_resp_json.get(relocation, "")
+                job[remote] = ai_resp_json.get(remote, "")
                 new_joblist.append(job)
             else: llms_stats[ai_name][rejected] += 1
-        except (json.JSONDecodeError, TypeError):
-            print("Error decoding JSON response.")
+        except Exception as exc:
+            error("Error happens: ", exc, stack_info=True)
             llms_stats[ai_name][rejected] += 1
 
     print(f"AI statistics: {llms_stats}")
@@ -624,17 +642,29 @@ def is_job_fits_resume(job_description, use_gemini=True):
             f"You are a career coach with over 15 years of experience helping job seekers land their dream jobs in tech. "
             f"Based on the following job description and resume, "
             f"please respond only in JSON format as follows: "
-            f'{{"score": <value>, "score_comments": "<comments>"}}. '
-            f"Where score is a float value between 0.00 and 1.00 indicating how well the job matches the resume and other my constraints, "
-            f"and score_comments provides brief reasons for the score. "
+            f'{{"{score}": <value>, '
+            f'"{score_comments}": "<comments>", '
+            f'"{salary_from}": "<salary_from>", '
+            f'"{salary_to}": "<salary_to>", '
+            f'"{visa_sponsorship}": "<visa_sponsorship>", '
+            f'"{relocation}": "<relocation>", '
+            f'"{remote}": "<remote>"}}. '
+            f"Where **{score}**: is a float value between 0.00 and 1.00 indicating how well the job matches the resume and other my constraints, "
+            f"**{score_comments}**: provides brief reasons for the score. "
+            f"**{salary_from}**: is an integer value of minimum salary in US dollar equivalent per month, provided in the job description; default is 0 "
+            f"**{salary_to}**: is an integer value of maximum salary in US dollar equivalent per month, provided in the job description; default is 0 "
+            f"**{visa_sponsorship}**: Information on employer assistance with visa sponsorship or '{NO_SPONSORSHIP}' if not applicable"
+            f"**{relocation}**: Information on employer assistance with relocation or '{NO_RELOCATION}' if not applicable "
+            f"and **{remote}**: provides emuneration of work options: ['{FULL_REMOTE}', '{REMOTE_FROM_COUNTRY}', '{HYBRID}', '{OFFICE}'], based on the job description: "
+            f"- '{FULL_REMOTE}' - if it is possible to work from anywhere, anytime,"
+            f"- '{REMOTE_FROM_COUNTRY}' - if it is possible to work from the employer's country, but anytime,"
+            f"- '{HYBRID}' - if it is possible to work only from the office and sometimes to work remotely,"
+            f"- '{OFFICE}' - it is the default value"
             f"Keep in mind that the main programming language is critical, but other technologies are secondary. "
             f"Even if I don't have them in my resume, I could know them anyway. "
-            f"Also, if my work experience is not enough, but there is a chance that I could be hired based on your experience of hiring, "
-            f"then this job could be suitable for me anyway. "
-            f"Additionally, please analyze the job description for remote work opportunities. I am willing to work remotely for any country, "
-            f"and I am open to relocation if the employer mentions it and offers assistance. "
-            f"If the job is only for local candidates, those already in the country, or requires a work permit for that country, "
-            f"then this job is not suitable for me. Don't be too strict"
+            f"Also, if my work experience is not enough, but there is a chance that I could be hired based on your experience of hiring, then this job could be suitable for me anyway. "
+            f"If the job is only for local candidates, those already in the country, or requires a work permit for that country, then this job is not suitable for me. " 
+            f"Please be flexible in your assessment."
             # f", except for the following countries: {allowed_countries}."
          ),
         ("human", user_prompt)
@@ -677,8 +707,13 @@ def extract_json(completion):
 
 def get_default_ai_response(exc):
     return {
-        "score": 0.00,
-        "score_comments": f"Failure to call AI.\n{exc}"
+        score: 0.00,
+        score_comments: f"Failure to call AI.\n{exc}",
+        salary_from: 0,
+        salary_to: 0,
+        visa_sponsorship: NO_SPONSORSHIP,
+        relocation: NO_RELOCATION,
+        remote: OFFICE
     }
 
 
